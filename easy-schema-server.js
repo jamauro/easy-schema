@@ -61,11 +61,11 @@ const deepPartialify = (obj) => {
           acc[k] = Optional(type)
         } else {
           const { value: tValue, optional: tOptional } = getValue(type);
-          acc[k] = tOptional ? Optional(Where({type: tValue, ...conditions})) : Optional(Where({type, ...conditions}))
+          acc[k] = tOptional ? Optional(Where({ type: tValue, ...conditions })) : Optional(Where({ type, ...conditions }))
         }
       }
     } else if (isArray(value)) {
-      acc[k] = isArray(value[0]) ? Optional([Where({type: value})]) : Optional([...Object.values(deepPartialify(v))]) // isArray(value[0]) checks for 2d array [[]]
+      acc[k] = isArray(value[0]) ? Optional([Where({ type: value })]) : Optional([...Object.values(deepPartialify(v))]) // isArray(value[0]) checks for 2d array [[]]
     } else if (isObject(value)) {
       acc[k] = Optional(deepPartialify(value));
     } else {
@@ -93,7 +93,7 @@ const maxProps = {
   object: 'maxProperties'
 };
 
-const createQualifiers = ({type, conditions}) => {
+const createQualifiers = ({ type, conditions }) => {
   const qualifiers = {}
   if (conditions.hasOwnProperty('min')) {
     qualifiers[minProps[type]] = conditions['min'];
@@ -138,7 +138,7 @@ const createJSONSchema = (obj) => {
       if (optional) {
         return Object.values(createJSONSchema(v).properties)[0];
       } else if (anyOf) {
-        return {anyOf: value.map(i => createJSONSchema({items: i}).properties.items)}
+        return { anyOf: value.map(i => createJSONSchema({ items: i }).properties.items) }
       } else if (isObject(value) && value.hasOwnProperty('type')) {
         const { type, ...conditions } = value;
 
@@ -151,24 +151,24 @@ const createJSONSchema = (obj) => {
           }
 
           if (isObject(typeValue)) {
-            return {...createJSONSchema({items: typeValue}).properties.items, ...(conditions && createQualifiers({type: 'object', conditions}))};
+            return { ...createJSONSchema({ items: typeValue }).properties.items, ...(conditions && createQualifiers({ type: 'object', conditions })) };
           }
 
           // for case when type is an array, e.g. {type: [String], min: //}
           if (isArray(typeValue)) {
-            return {...createJSONSchema({items: typeValue}).properties.items, ...(conditions && createQualifiers({type: 'array', conditions}))};
+            return { ...createJSONSchema({ items: typeValue }).properties.items, ...(conditions && createQualifiers({ type: 'array', conditions })) };
           }
 
           const mappedType = typeMap[typeValue.name || typeValue];
-          return {bsonType: mappedType, ...(conditions && createQualifiers({type: mappedType, conditions}))};
+          return { bsonType: mappedType, ...(conditions && createQualifiers({ type: mappedType, conditions })) };
         }
       } else if (isArray(value)) {
         const { value: firstValue, optional, anyOf } = getValue(value[0]);
         const { type: fvType, ...conditions } = firstValue; // might be using [{type: }]
-        const { value: typeValue, optional: fvTypeOptional  } = getValue(fvType);
-        const items = isArray(value[0]) ? firstValue.map(f => createJSONSchema({items: f}).properties.items) : createJSONSchema({items: value[0]}).properties.items;
+        const { value: typeValue, optional: fvTypeOptional } = getValue(fvType);
+        const items = isArray(value[0]) ? firstValue.map(f => createJSONSchema({ items: f }).properties.items) : createJSONSchema({ items: value[0] }).properties.items;
 
-        return { bsonType: 'array', items, ...((optional || fvTypeOptional) && {minItems: 0})}
+        return { bsonType: 'array', items, ...((optional || fvTypeOptional) && { minItems: 0 }) }
       } else if (isObject(value)) {
         return createJSONSchema(value);
       } else {
@@ -194,7 +194,7 @@ const createJSONSchema = (obj) => {
 
 const db = MongoInternals.defaultRemoteCollectionDriver().mongo.db;
 
-const addSchema = async(name, schema) => {
+const addSchema = async (name, schema) => {
   // console.log(`adding schema for ${name} collection`)
   return await db.command({
     collMod: name,
@@ -204,10 +204,10 @@ const addSchema = async(name, schema) => {
   });
 }
 
-Mongo.Collection.prototype.attachSchema = async function (schema) {
+Mongo.Collection.prototype.attachSchema = async function(schema) {
   const collection = this;
-  collection.schema = {...shapeSchema(schema), '$id':`/${collection._name}`};
-  collection._schemaDeepPartial = deepPartialify({...schema, '$id':`/${collection._name}`});
+  collection.schema = { ...shapeSchema(schema), '$id': `/${collection._name}` };
+  collection._schemaDeepPartial = deepPartialify({ ...schema, '$id': `/${collection._name}` });
 
   if (!settings.autoAttachJSONSchema) { // optional setting that allows user to not attach a JSONSchema to the collection in the db
     return;
@@ -218,8 +218,8 @@ Mongo.Collection.prototype.attachSchema = async function (schema) {
   const collectionNames = (await db.listCollections({}, { nameOnly: true }).toArray()).map(c => c.name);
   if (!collectionNames.includes(collection._name)) {
     skipAutoCheck();
-    collection.insert({_id: 'setup schema'});
-    collection.remove({_id: 'setup schema'});
+    collection.insert({ _id: 'setup schema' });
+    collection.remove({ _id: 'setup schema' });
   }
 
   const mongoJSONSchema = createJSONSchema(schema);
@@ -248,11 +248,11 @@ const transformModifier = modifier => flatten(Object.entries(modifier).reduce((a
   const isCurrentDateOperator = k === '$currentDate';
   const isBitOperator = k === '$bit';
 
-  return {...acc, ...transformObject(v, isArrayOperator, isCurrentDateOperator, isBitOperator)}
-}, {}), {safe: true}); // safe: true preserves arrays when using flatten
+  return { ...acc, ...transformObject(v, isArrayOperator, isCurrentDateOperator, isBitOperator) }
+}, {}), { safe: true }); // safe: true preserves arrays when using flatten
 
 
-const check = (data, schema, {full = false} = {}) => { // the only reason we don't have this in shared is to reduce bundle size on the client
+const check = (data, schema, { full = false } = {}) => { // the only reason we don't have this in shared is to reduce bundle size on the client
   if (!isObject(data)) {
     throw new Match.Error(`must pass in an object to validate. you passed a ${typeof data}`);
   }
@@ -274,17 +274,19 @@ const check = (data, schema, {full = false} = {}) => { // the only reason we don
 
   /* if (Meteor.isDevelopment) {
     console.log(`validate with data:`);
-    console.dir(dataToCheck, {depth: null});
+    console.dir(dataToCheck, { depth: null });
     console.log('and schema:');
-    console.dir(schemaToCheck, {depth: null});
-  } */
+    console.dir(schemaToCheck, { depth: null });
+    } */
 
   try {
     c(dataToCheck, schemaToCheck);
     return true;
   } catch (error) {
-    const message = error.message?.includes('Match.Where') ? `Validation error: ${error.path} failed condition` : `Validation error: ${error.toString().replace('Error: ', '').replace('Match error: ', '')}` // replaceAll is Node 15+ .message?.replaceAll('Match error: ', '') || error
-    throw new ValidationError([{name: error.path, type: 'type', message}]);
+    const message = error.message?.includes('Match.Where') ? `${error.path} failed condition` : `${error.toString().replace('Error: ', '').replace('Match error: ', '')}` // replaceAll is Node 15+ .message?.replaceAll('Match error: ', '') || error
+    const type = message.toLowerCase().includes('missing') ? 'missing' : 'invalid';
+    const name = error.path || message.split("'")[1];
+    throw new ValidationError([{ name, type, message }]);
   }
 };
 
@@ -324,11 +326,11 @@ Meteor.startup(() => {
       }
 
 
-      const data = isUpsert ? {...args[0], ...args[1]} : isUpdate ? args[1] : args[0];
-      // console.log('AUTO CHECKING', data);
+      const data = isUpsert ? { ...args[0], ...args[1] } : isUpdate ? args[1] : args[0];
+      //console.log('AUTO CHECKING', data);
       const schemaToCheck = isUpdate ? _schemaDeepPartial : schema;
       const full = !isUpdate; // inserts only
-      check(data, schemaToCheck, {full});
+      check(data, schemaToCheck, { full });
 
       return method.apply(collection, args);
     }

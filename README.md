@@ -2,11 +2,11 @@
 
 Easy Schema is an easy way to add JSON Schema validation for Meteor apps. It extends the functionality provided by Meteor's [check](https://docs.meteor.com/api/check.html) to validate arguments passed to Meteor Methods and validates automatically on the server prior to write operations `insert / update / upsert`. It also automatically generates a [JSON Schema](https://www.mongodb.com/docs/manual/core/schema-validation/specify-json-schema/#std-label-schema-validation-json) and attaches that to the database's Collection. It's meant to be lightweight and fast.
 
-This package can be used with `Meteor.methods` or Meteor's [Validated Method](https://github.com/meteor/validated-method). It also has built-in support for [Validation Error](https://github.com/meteor/validation-error) for friendlier error messages.
+This package can be used with `Meteor.methods`, Meteor's [Validated Method](https://github.com/meteor/validated-method), or any other package that includes a way to validate the method via a function. It also has built-in support for [Validation Error](https://github.com/meteor/validation-error) for friendlier error messages.
 
 ## Basics
 
-When using this package, you create a schema once for each Collection and attach it. When a method is called, you'll use this package's `check` function to make sure the arguments passed from the client match what is expected by the schema you defined.
+When using this package, you create a schema once for each Collection and attach it with `attachSchema`. When a method is called, you'll use this package's `check` function to make sure the arguments passed from the client match what is expected by the schema you defined.
 
 Then, right before the insert / update / upsert to the database, a validation will be automatically performed against the data that will be written to the database. It will also be validated against the JSON Schema attached to the Collection via Mongo's JSON Schema support.
 
@@ -256,7 +256,7 @@ By default, an automatic validation will be performed on the server prior to `in
 `Do not put in /server/main.js. Make sure it's in a different file on the server that is imported at the top of your /server/main.js`
 import { EasySchema } from 'meteor/jam:easy-schema';
 
-EasySchema.configure({autoCheck: false);
+EasySchema.configure({autoCheck: false});
 ```
 
 If you turn `autoCheck` off, you can still validate manually by using the `check` function
