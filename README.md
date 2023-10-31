@@ -1,6 +1,6 @@
 # Easy Schema
 
-Easy Schema is an easy way to add JSON Schema validation for Meteor apps. It extends the functionality provided by Meteor's [check](https://docs.meteor.com/api/check.html) to validate arguments passed to Meteor Methods and validates automatically on the server prior to write operations `insert / update / upsert`. It also automatically generates a [JSON Schema](https://www.mongodb.com/docs/manual/core/schema-validation/specify-json-schema/#std-label-schema-validation-json) and attaches that to the database's Collection. It's meant to be lightweight and fast.
+Easy Schema is an easy way to add schema validation for Meteor apps. It extends the functionality provided by Meteor's [check](https://docs.meteor.com/api/check.html) to validate arguments passed to Meteor Methods and validates automatically on the server prior to write operations `insert / update / upsert`. It also automatically generates a [JSON Schema](https://www.mongodb.com/docs/manual/core/schema-validation/specify-json-schema/#std-label-schema-validation-json) and attaches it to the database's Collection. It's meant to be lightweight and fast. By default, it validates automatically but it is configurable.
 
 This package can be used with `Meteor.methods`, Meteor's [Validated Method](https://github.com/meteor/validated-method), or any other package that includes a way to validate the method via a function. It also has built-in support for [Validation Error](https://github.com/meteor/validation-error) for friendlier error messages.
 
@@ -8,7 +8,7 @@ This package can be used with `Meteor.methods`, Meteor's [Validated Method](http
 
 When using this package, you create a schema once for each Collection and attach it with `attachSchema`. When a method is called, you'll use this package's `check` function to make sure the arguments passed from the client match what is expected by the schema you defined.
 
-Then, right before the insert / update / upsert to the database, a validation will be automatically performed against the data that will be written to the database. It will also be validated against the JSON Schema attached to the Collection via Mongo's JSON Schema support.
+Then, right before the insert / update / upsert to the database, a validation will be automatically performed against the data that will be written to the database. By default, it will also be validated against the JSON Schema attached to the Collection via Mongo's JSON Schema support though you can disable this if you'd like.
 
 ## Usage
 
@@ -23,7 +23,7 @@ import { Optional, Any, Integer, AnyOf } from 'meteor/jam:easy-schema';
 
 export const Todos = new Mongo.Collection('todos');
 
-// schema
+// Illustrating the various possibilities for a schema
 const schema = {
   _id: String, // _id can technically be optional with inserts and upserts since it won't be created yet. this is handled automatically.
   text: String,
@@ -39,11 +39,11 @@ const schema = {
     city: String,
     state: {type: String, min: 0, max: 2}, // min is >= and max is <=. automatically converted to JSON Schema "minLength / maxLength"
   },
-  messages: [{text: String, createdAt: Date}] // array of objects
+  messages: [{text: String, createdAt: Date}], // array of objects
   people: [ // an array of objects with additionalProperties: true. additonalProperties is false by default.
     {type: {name: String, age: Number, arrayOfOptionalBooleans: [Optional(Boolean)]}, additionalProperties: true}
   ],
-  regexString: {type: String, regex: /.com$/} // regex supported for Strings. should be a regex literal. automatically converted to JSON Schema "pattern"
+  regexString: {type: String, regex: /.com$/}, // regex supported for Strings. should be a regex literal. automatically converted to JSON Schema "pattern"
   optionalArray: Optional([String]),
   optionalObject: Optional({thing: String, optionalString: Optional(String)}),
   arrayOfInts: [Integer],
@@ -302,6 +302,36 @@ EasySchema.configure({
   // autoAttachJSONSchema: false
   validationAction: 'warn' // 'error' is default
   valdiationLevel: 'moderate' // 'strict' is default
+});
+```
+
+### Dynamically import schema (optional)
+You can also dynamically import your schemas to reduce the initial bundle size on the client.
+
+First you'll need to create your schema inside its own `schema.js` and put it inside its collection's folder, e.g. `/imports/api/todos/schema.js`
+
+Then you'll need to add a file to your project's root, e.g. `register-dynamic-imports.js` and import this file on both the client and the server near the top of its `mainModule`. Here's an example of the file:
+
+```js
+// In order for the dynamic import to work properly, Meteor needs to know these paths exist. We do that by declaring them statically inside a if (false) block
+Meteor.startup(async () => {
+  if (false) {
+    await import('/imports/api/todos/schema');
+    // add additional schema paths here as well
+  }
+});
+```
+
+Then instead of using `Todos.attachSchema(schema)`, you'd just use `Todos.attachSchema()`
+```js
+// By not passing in a schema explicitly, it will automatically dynamically import the schema and then attach it
+Todos.attachSchema();
+```
+
+This assumes your directory structure is `/imports/api/{collection}/schema.js`. If you have a different structure, e.g. `/api/todos/schema.js`, you can configure the base path with:
+```js
+EasySchema.configure({
+  basePath: `/api`
 });
 ```
 

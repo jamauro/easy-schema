@@ -1,6 +1,10 @@
 import { check as c, Match } from 'meteor/check';
 import { pick, isObject, isEmpty, isEqual } from './utils';
 
+export const sharedSettings = {
+  basePath: `/imports/api`
+}
+
 export const Integer = Match.Integer; // Matches only signed 32-bit integers
 export const Any = Match.Any;
 export const Optional = (type) => Match.Maybe(type);

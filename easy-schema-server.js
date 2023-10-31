@@ -1,12 +1,13 @@
 import { Meteor } from 'meteor/meteor';
 import { Mongo, MongoInternals } from 'meteor/mongo';
-import { Any, Optional, Integer, AnyOf, Where, shapeSchema, getValue, allowedKeywords, hasModifiers, isArray } from './shared';
+import { Any, Optional, Integer, AnyOf, Where, shapeSchema, getValue, allowedKeywords, hasModifiers, isArray, sharedSettings } from './shared';
 import { pick, isObject, isEmpty } from './utils';
 import { ValidationError } from 'meteor/mdg:validation-error';
 import { flatten, unflatten } from 'flat'
 import { check as c } from 'meteor/check';
 
 const settings = {
+  ...sharedSettings,
   autoCheck: true,
   autoAttachJSONSchema: true,
   validationAction: 'error',
@@ -28,6 +29,7 @@ const typeMap = {
 
 const configure = config => {
   c(config, {
+    basePath: Match.Maybe(String),
     autoCheck: Match.Maybe(Boolean),
     autoAttachJSONSchema: Match.Maybe(Boolean),
     validationAction: Match.Maybe(String),
@@ -38,6 +40,7 @@ const configure = config => {
   if (!isEmpty(config.additionalBsonTypes)) {
     Object.assign(typeMap, config.additionalBsonTypes)
   }
+
   return Object.assign(settings, config);
 }
 
@@ -195,38 +198,44 @@ const createJSONSchema = (obj) => {
 const db = MongoInternals.defaultRemoteCollectionDriver().mongo.db;
 
 const addSchema = async (name, schema) => {
-  // console.log(`adding schema for ${name} collection`)
   return await db.command({
     collMod: name,
     validationAction: settings.validationAction,
     validationLevel: settings.validationLevel,
     validator: { $jsonSchema: schema },
   });
-}
+};
 
-Mongo.Collection.prototype.attachSchema = async function(schema) {
-  const collection = this;
-  collection.schema = { ...shapeSchema(schema), '$id': `/${collection._name}` };
-  collection._schemaDeepPartial = deepPartialify({ ...schema, '$id': `/${collection._name}` });
+Mongo.Collection.prototype.attachSchema = async function(schema = undefined) {
+  try {
+    const schemaToAttach = schema ? schema : (require(`${settings.basePath}/${this._name}/schema.js`)).schema;
+    if (!schemaToAttach) {
+      throw new Error('No schema found');
+    }
 
-  if (!settings.autoAttachJSONSchema) { // optional setting that allows user to not attach a JSONSchema to the collection in the db
-    return;
+    const collection = this;
+    collection.schema = { ...shapeSchema(schemaToAttach), '$id': `/${collection._name}` };
+    collection._schemaDeepPartial = deepPartialify({ ...schemaToAttach, '$id': `/${collection._name}` });
+
+    if (!settings.autoAttachJSONSchema) { // optional setting that allows user to not attach a JSONSchema to the collection in the db
+      return;
+    }
+
+    // the collection technically doesn't exist in the db until you insert a doc even though it was already initialized with new Mongo.Collection
+    // so we check if it exists and if not, we insert a doc and then remove it before adding the schema so we don't run into validation errors
+    const collectionNames = (await db.listCollections({}, { nameOnly: true }).toArray()).map(c => c.name);
+    if (!collectionNames.includes(collection._name)) {
+      skipAutoCheck();
+      collection.insert({ _id: 'setup schema' });
+      collection.remove({ _id: 'setup schema' });
+    }
+
+    const mongoJSONSchema = createJSONSchema(schemaToAttach);
+
+    return addSchema(`${collection._name}`, mongoJSONSchema);
+  } catch(error) {
+    console.error(error)
   }
-
-  // the collection technically doesn't exist in the db until you insert a doc even though it was already initialized with new Mongo.Collection
-  // so we check if it exists and if not, we insert a doc and then remove it before adding the schema so we don't run into validation errors
-  const collectionNames = (await db.listCollections({}, { nameOnly: true }).toArray()).map(c => c.name);
-  if (!collectionNames.includes(collection._name)) {
-    skipAutoCheck();
-    collection.insert({ _id: 'setup schema' });
-    collection.remove({ _id: 'setup schema' });
-  }
-
-  const mongoJSONSchema = createJSONSchema(schema);
-  /* console.log('MONGO jsonSchema');
-  console.dir(mongoJSONSchema, {depth: null}) */
-
-  return addSchema(`${collection._name}`, mongoJSONSchema);
 };
 
 const transformObject = (obj, isArrayOperator, isCurrentDateOperator, isBitOperator) => Object.entries(obj).reduce((acc, [k, v]) => {
@@ -252,7 +261,7 @@ const transformModifier = modifier => flatten(Object.entries(modifier).reduce((a
 }, {}), { safe: true }); // safe: true preserves arrays when using flatten
 
 
-const check = (data, schema, { full = false } = {}) => { // the only reason we don't have this in shared is to reduce bundle size on the client
+/* const check = (data, schema, { full = false } = {}) => { // the only reason we don't have this in shared is to reduce bundle size on the client
   if (!isObject(data)) {
     throw new Match.Error(`must pass in an object to validate. you passed a ${typeof data}`);
   }
@@ -272,12 +281,31 @@ const check = (data, schema, { full = false } = {}) => { // the only reason we d
 
   const schemaToCheck = (dataHasModifiers || full) ? shapedSchema : pick(shapedSchema, Object.keys(dataToCheck)); // basically we only want to pick when necessary, e.g. on the initial check with the args passed in from the client to the server
 
-  /* if (Meteor.isDevelopment) {
-    console.log(`validate with data:`);
-    console.dir(dataToCheck, { depth: null });
-    console.log('and schema:');
-    console.dir(schemaToCheck, { depth: null });
-    } */
+  try {
+    c(dataToCheck, schemaToCheck);
+    return true;
+  } catch (error) {
+    const message = error.message?.includes('Match.Where') ? `${error.path} failed condition` : `${error.toString().replace('Error: ', '').replace('Match error: ', '')}` // replaceAll is Node 15+ .message?.replaceAll('Match error: ', '') || error
+    const type = message.toLowerCase().includes('missing') ? 'missing' : 'invalid';
+    const name = error.path || message.split("'")[1];
+    throw new ValidationError([{ name, type, message }]);
+  }
+}; */
+
+const check = (data, schema, { full = false } = {}) => { // the only reason we don't have this in shared is to reduce bundle size on the client
+  const dataHasModifiers = data && hasModifiers(data);
+  const transformedModifier = dataHasModifiers && transformModifier(data);
+  const dataToCheck = dataHasModifiers ? unflatten(transformedModifier) : data;
+
+  const schemaIsObject = isObject(schema);
+  const { $id, ...schemaRest } = schemaIsObject ? schema : {}; // we don't need to check $id, so we remove it
+  const shapedSchema = schemaIsObject ? (schema['$id'] ? schemaRest : dataHasModifiers ? deepPartialify(schema) : shapeSchema(schema)) : {}; // if we have an $id, then we've already shaped / deepPartialified as needed so we don't need to do it again, otherwise a custom schema has been passed in and it needs to be shaped / deepPartialified
+
+  if (full) {
+    delete shapedSchema._id // we won't have an _id when doing an insert with full, so we remove it from the schema
+  }
+
+  const schemaToCheck = schemaIsObject ? ((dataHasModifiers || full) ? shapedSchema : pick(shapedSchema, Object.keys(dataToCheck))) : schema; // basically we only want to pick when necessary, e.g. on the initial check with the args passed in from the client to the server
 
   try {
     c(dataToCheck, schemaToCheck);
@@ -293,43 +321,39 @@ const check = (data, schema, { full = false } = {}) => { // the only reason we d
 // Wrap DB write operation methods
 // Only run on the server since we're already validating through Meteor methods.
 // This is validation of the data being written before it's inserted / updated / upserted.
+const writeMethods = ['insert', 'update', 'upsert'];
 Meteor.startup(() => {
   // autoCheck defaults to true but if user configures it to be false, then we don't wrap the write operation methods
-  Meteor.isServer && settings.autoCheck && ['insert', 'update'].forEach(methodName => {
+  Meteor.isServer && settings.autoCheck && writeMethods.forEach(methodName => {
     const method = Mongo.Collection.prototype[methodName];
-
     Mongo.Collection.prototype[methodName] = function(...args) {
       const collection = this;
       const { _name, schema, _schemaDeepPartial } = collection;
 
       // autoCheck can also be skipped on a one-off basis per method call, so we check here if that's the case
       if (!settings.autoCheck) {
-        // Meteor.isDevelopment && console.log('skipping autoCheck')
         const result = method.apply(collection, args);
         settings.autoCheck = true;
         return result;
       }
 
       if (!schema) {
-        // Meteor.isDevelopment && console.log(`NO SCHEMA for ${_name} collection, skipping autoCheck`);
         return method.apply(collection, args);
       }
 
       const isUpdate = methodName === 'update';
-      const isUpsert = isUpdate && (args[2]?.hasOwnProperty('upsert') || false) && args[2]['upsert'];
+      const isUpsert = methodName === 'upsert' || (isUpdate && (args[2]?.hasOwnProperty('upsert') || false) && args[2]['upsert']);
       const isUserServicesUpdate = isUpdate && _name === 'users' && Object.keys(Object.values(args[1])[0])[0].split('.')[0] === 'services';
 
       // If you do have a Meteor.users schema, then this prevents a check on Meteor.users.services updates that run periodically to resume login tokens and other things that don't need validation
       if (isUserServicesUpdate) {
-        // Meteor.isDevelopment && console.log('user services update, skipping autoCheck')
         return method.apply(collection, args);
       }
 
-
       const data = isUpsert ? { ...args[0], ...args[1] } : isUpdate ? args[1] : args[0];
-      //console.log('AUTO CHECKING', data);
       const schemaToCheck = isUpdate ? _schemaDeepPartial : schema;
       const full = !isUpdate; // inserts only
+
       check(data, schemaToCheck, { full });
 
       return method.apply(collection, args);
