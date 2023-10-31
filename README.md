@@ -280,7 +280,7 @@ const schema = {
 }
 ```
 
-### Configuring (optional)
+## Configuring (optional)
 If you like the defaults, then you won't need to configure anything. But there is some flexibility in how you use this package.
 
 By default, an automatic validation will be performed on the server prior to `insert / update / upsert` operations. If you don't want that, you can turn it off by setting `autoCheck` to `false`. The data will still be validated against the JSON Schema but you won't get as friendly of error messages and you won't know that a write fails until it's attempted on the database.
@@ -369,7 +369,7 @@ EasySchema.configure({
 });
 ```
 
-### Unsupported
+## Unsupported
 
 **Auto Check for bulk writes**
 
