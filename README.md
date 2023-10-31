@@ -2,7 +2,7 @@
 
 Easy Schema is an easy way to add schema validation for Meteor apps. It extends the functionality provided by Meteor's [check](https://docs.meteor.com/api/check.html) to validate arguments passed to Meteor Methods and validates automatically on the server prior to write operations `insert / update / upsert`. It also automatically generates a [JSON Schema](https://www.mongodb.com/docs/manual/core/schema-validation/specify-json-schema/#std-label-schema-validation-json) and attaches it to the database's Collection. It's meant to be lightweight and fast. By default, it validates automatically but it is configurable.
 
-This package can be used with `Meteor.methods`, Meteor's [Validated Method](https://github.com/meteor/validated-method), or any other package that includes a way to validate the method via a function. It also has built-in support for [Validation Error](https://github.com/meteor/validation-error) for friendlier error messages.
+This package can be used with [jam:method](https://github.com/jamauro/method), [Meteor.methods](https://docs.meteor.com/api/methods.html), [Validated Method](https://github.com/meteor/validated-method), or any other package that includes a way to validate the method via a function. It also has built-in support for [Validation Error](https://github.com/meteor/validation-error) for friendlier error messages.
 
 ## Basics
 
@@ -61,8 +61,8 @@ Todos.attachSchema(schema); // attachSchema is a function that's built into this
 ```js
 import { createMethod } from 'meteor/jam:method';
 
-export const create = createMethod({
-  name: 'todos.create',
+export const insertTodo = createMethod({
+  name: 'todos.insert',
   schema: Todos.schema,
   run({ text }) {
     const userId = Meteor.userId(); // can use this.userId instead
@@ -87,7 +87,7 @@ import { check } from 'meteor/jam:easy-schema';
 import { ValidatedMethod } from 'meteor/mdg:validated-method';
 
 export const insertTodo = new ValidatedMethod({
-  name: 'todos.insertTodo',
+  name: 'todos.insert',
   validate(args) { // args should be an object that you pass in from the client. If you want to destructure here, then be sure to pass an object into the check function.
     check(args, Todos.schema); // the package automatically compares the args only against the relative data inside the Todos.schema so no need to pick them out yourself.
     // if you want, you can also pass in a custom schema, like this:
