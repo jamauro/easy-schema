@@ -17,41 +17,16 @@ Then, right before the insert / update / upsert to the database, a validation wi
 
 ### Define a schema and attach it to its Collection
 ```js
-import { Meteor } from 'meteor/meteor';
 import { Mongo } from 'meteor/mongo';
-import { Optional, Any, Integer, AnyOf } from 'meteor/jam:easy-schema';
 
 export const Todos = new Mongo.Collection('todos');
 
-// Illustrating the various possibilities for a schema
 const schema = {
-  _id: String, // _id can technically be optional with inserts and upserts since it won't be created yet. this is handled automatically.
+  _id: String,
   text: String,
-  emails: [String], // an array of strings
   createdAt: Date,
-  private: Boolean,
-  thing: Number,
-  stuff: Object,
-  int: Integer,
-  digit: {type: Integer, min: 4, max: 12}, // min is >= and max is <=. automatically converted to JSON Schema "minimum / maximum"
-  address: {
-    street_address: Optional(String), // street address is optional
-    city: String,
-    state: {type: String, min: 0, max: 2}, // min is >= and max is <=. automatically converted to JSON Schema "minLength / maxLength"
-  },
-  messages: [{text: String, createdAt: Date}], // array of objects
-  people: [ // an array of objects with additionalProperties: true. additonalProperties is false by default.
-    {type: {name: String, age: Number, arrayOfOptionalBooleans: [Optional(Boolean)]}, additionalProperties: true}
-  ],
-  regexString: {type: String, regex: /.com$/}, // regex supported for Strings. should be a regex literal. automatically converted to JSON Schema "pattern"
-  optionalArray: Optional([String]),
-  optionalObject: Optional({thing: String, optionalString: Optional(String)}),
-  arrayOfInts: [Integer],
-  arrayOfOptionalInts: [Optional(Integer)],
-  arrayOfRegexStrings: [{type: String, regex: /.com$/}],
-  anyOf: AnyOf([String], [Date]), // AnyOf matches one or more of the items. In this example, it matches either an array of Strings or an array of Dates
-  arrayAnyOf: [AnyOf(String, Number)], // matches an array of Strings or an array of Numbers,
-  any: Any // anything, aka a blackbox
+  owner: String,
+  username: String
 };
 
 Todos.attachSchema(schema); // attachSchema is a function that's built into this package
@@ -115,6 +90,40 @@ export const insertTodo = new ValidatedMethod({
 Then import `insertTodo` method in your UI component and call it like you would any other Validated Method. See their [docs](https://github.com/meteor/validated-method) for more info.
 
 ## Defining Schemas
+```js
+import { Optional, Any, Integer, AnyOf } from 'meteor/jam:easy-schema';
+
+// Illustrating the various possibilities for a schema
+const schema = {
+  _id: String, // _id can technically be optional with inserts and upserts since it won't be created yet. this is handled automatically.
+  text: String,
+  emails: [String], // an array of strings
+  createdAt: Date,
+  private: Boolean,
+  thing: Number,
+  stuff: Object,
+  int: Integer,
+  digit: {type: Integer, min: 4, max: 12}, // min is >= and max is <=. automatically converted to JSON Schema "minimum / maximum"
+  address: {
+    street_address: Optional(String), // street address is optional
+    city: String,
+    state: {type: String, min: 0, max: 2}, // min is >= and max is <=. automatically converted to JSON Schema "minLength / maxLength"
+  },
+  messages: [{text: String, createdAt: Date}], // array of objects
+  people: [ // an array of objects with additionalProperties: true. additonalProperties is false by default.
+    {type: {name: String, age: Number, arrayOfOptionalBooleans: [Optional(Boolean)]}, additionalProperties: true}
+  ],
+  regexString: {type: String, regex: /.com$/}, // regex supported for Strings. should be a regex literal. automatically converted to JSON Schema "pattern"
+  optionalArray: Optional([String]),
+  optionalObject: Optional({thing: String, optionalString: Optional(String)}),
+  arrayOfInts: [Integer],
+  arrayOfOptionalInts: [Optional(Integer)],
+  arrayOfRegexStrings: [{type: String, regex: /.com$/}],
+  anyOf: AnyOf([String], [Date]), // AnyOf matches one or more of the items. In this example, it matches either an array of Strings or an array of Dates
+  arrayAnyOf: [AnyOf(String, Number)], // matches an array of Strings or an array of Numbers,
+  any: Any // anything, aka a blackbox
+};
+```
 
 ### Integer
 `Integer` matches only signed 32-bit integers
