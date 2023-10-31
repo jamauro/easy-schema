@@ -57,21 +57,43 @@ const schema = {
 Todos.attachSchema(schema); // attachSchema is a function that's built into this package
 ```
 
-### Use the check function with Validated Methods
-Here's an example of inserting a `todo`.
-Note that `ValidatedMethod` is not required. You could also define the method with [Meteor.methods](https://docs.meteor.com/api/methods.html) and use the `check` function provided by this package.
+### Use the schema with [jam:method](https://github.com/jamauro/method) Methods
+```js
+import { createMethod } from 'meteor/jam:method';
+
+export const create = createMethod({
+  name: 'todos.create',
+  schema: Todos.schema,
+  run({ text }) {
+    const userId = Meteor.userId(); // can use this.userId instead
+    const todo = {
+      text,
+      createdAt: new Date(),
+      owner: userId,
+      username: Meteor.users.findOne(userId).username
+    }
+
+    const todoId = Todos.insert(todo);
+    return todoId;
+  }
+});
+```
+See [jam:method](https://github.com/jamauro/method) for more info.
+
+### Use the check function with Validated Methods or Meteor.methods
+You can use this package with `ValidatedMethod` or [Meteor.methods](https://docs.meteor.com/api/methods.html) if you prefer. Use the `check` function provided by this package.
 ```js
 import { check } from 'meteor/jam:easy-schema';
 import { ValidatedMethod } from 'meteor/mdg:validated-method';
 
-export const insert = new ValidatedMethod({
-  name: 'todos.insert',
+export const insertTodo = new ValidatedMethod({
+  name: 'todos.insertTodo',
   validate(args) { // args should be an object that you pass in from the client. If you want to destructure here, then be sure to pass an object into the check function.
     check(args, Todos.schema); // the package automatically compares the args only against the relative data inside the Todos.schema so no need to pick them out yourself.
     // if you want, you can also pass in a custom schema, like this:
     /* check(args, {text: {type: String, min: 1, max: 16}}) */
   },
-  run({text}) { // you can destructure args here if you'd like, it's not necessary.
+  run({ text }) {
     const userId = Meteor.userId();
     if (!userId) {
       throw new Meteor.Error('not-authorized');
@@ -90,7 +112,7 @@ export const insert = new ValidatedMethod({
 });
 ```
 
-Then import the `insert` method in your UI component and call it like you would any other Validated Method. See their [docs](https://github.com/meteor/validated-method) for more info.
+Then import `insertTodo` method in your UI component and call it like you would any other Validated Method. See their [docs](https://github.com/meteor/validated-method) for more info.
 
 ## Defining Schemas
 
