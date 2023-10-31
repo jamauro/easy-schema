@@ -24,8 +24,9 @@ export const Todos = new Mongo.Collection('todos');
 const schema = {
   _id: String,
   text: String,
+  done: Boolean,
   createdAt: Date,
-  owner: String,
+  authorId: String,
   username: String
 };
 
@@ -43,8 +44,9 @@ export const insertTodo = createMethod({
     const userId = Meteor.userId(); // can use this.userId instead
     const todo = {
       text,
+      done: false,
       createdAt: new Date(),
-      owner: userId,
+      authorId: userId,
       username: Meteor.users.findOne(userId).username
     }
 
@@ -76,8 +78,9 @@ export const insertTodo = new ValidatedMethod({
 
     const todo = {
       text,
+      done: false,
       createdAt: new Date(),
-      owner: userId,
+      authorId: userId,
       username: Meteor.users.findOne(userId).username
     }
 
