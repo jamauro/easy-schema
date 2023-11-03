@@ -333,8 +333,8 @@ You can prevent automatically attaching a JSON Schema to your Collection by sett
 import { EasySchema } from 'meteor/jam:easy-schema';
 
 EasySchema.configure({
-  // autoAttachJSONSchema: false
-  validationAction: 'warn' // 'error' is default
+  // autoAttachJSONSchema: false,
+  validationAction: 'warn', // 'error' is default
   valdiationLevel: 'moderate' // 'strict' is default
 });
 ```
@@ -377,7 +377,7 @@ If you're using `rawCollection()` for bulk writes, these will not be automatical
 
 **Update accepting an aggregation pipeline**
 
-Though technically Mongo supports it, Meteor does not support aggregation pipeline's in `update` operations (https://github.com/meteor/meteor/issues/11276) and so this package does not.
+Though technically Mongo supports it, Meteor does not support an aggregation pipeline in `update` operations (https://github.com/meteor/meteor/issues/11276) and so this package does not.
 
 **JSON Schema omissions**
 
