@@ -260,38 +260,6 @@ const transformModifier = modifier => flatten(Object.entries(modifier).reduce((a
   return { ...acc, ...transformObject(v, isArrayOperator, isCurrentDateOperator, isBitOperator) }
 }, {}), { safe: true }); // safe: true preserves arrays when using flatten
 
-
-/* const check = (data, schema, { full = false } = {}) => { // the only reason we don't have this in shared is to reduce bundle size on the client
-  if (!isObject(data)) {
-    throw new Match.Error(`must pass in an object to validate. you passed a ${typeof data}`);
-  }
-  if (!isObject(schema)) {
-    throw new Match.Error(`must pass in a schema object. you passed a ${typeof schema}`);
-  }
-
-  const dataHasModifiers = hasModifiers(data);
-  const transformedModifier = dataHasModifiers && transformModifier(data);
-  const dataToCheck = dataHasModifiers ? unflatten(transformedModifier) : data;
-  const { $id, ...schemaRest } = schema; // we don't need to check $id, so we remove it
-  const shapedSchema = schema['$id'] ? schemaRest : dataHasModifiers ? deepPartialify(schema) : shapeSchema(schema); // if we have an $id, then we've already shaped / deepPartialified as needed so we don't need to do it again, otherwise a custom schema has been passed in and it needs to be shaped / deepPartialified
-
-  if (full) {
-    delete shapedSchema._id // we won't have an _id when doing an insert with full, so we remove it from the schema
-  }
-
-  const schemaToCheck = (dataHasModifiers || full) ? shapedSchema : pick(shapedSchema, Object.keys(dataToCheck)); // basically we only want to pick when necessary, e.g. on the initial check with the args passed in from the client to the server
-
-  try {
-    c(dataToCheck, schemaToCheck);
-    return true;
-  } catch (error) {
-    const message = error.message?.includes('Match.Where') ? `${error.path} failed condition` : `${error.toString().replace('Error: ', '').replace('Match error: ', '')}` // replaceAll is Node 15+ .message?.replaceAll('Match error: ', '') || error
-    const type = message.toLowerCase().includes('missing') ? 'missing' : 'invalid';
-    const name = error.path || message.split("'")[1];
-    throw new ValidationError([{ name, type, message }]);
-  }
-}; */
-
 const check = (data, schema, { full = false } = {}) => { // the only reason we don't have this in shared is to reduce bundle size on the client
   const dataHasModifiers = data && hasModifiers(data);
   const transformedModifier = dataHasModifiers && transformModifier(data);
