@@ -384,6 +384,7 @@ Though technically Mongo supports it, Meteor does not support an aggregation pip
 See: [MongoDB JSON Schema omissions](https://www.mongodb.com/docs/manual/reference/operator/query/jsonSchema/#omissions)
 
 In addition to the MongoDB omissions, these are also unsupported by this package at this time:
+* dependencies
 * oneOf
 * allOf
 * not
