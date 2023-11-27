@@ -1,13 +1,13 @@
 import { Meteor } from 'meteor/meteor';
 import { Mongo, MongoInternals } from 'meteor/mongo';
-import { Any, Optional, Integer, AnyOf, Where, shapeSchema, getValue, allowedKeywords, hasModifiers, isArray, sharedSettings } from './shared';
+import { Any, Optional, Integer, AnyOf, Where, shape, getValue, allowed, hasOperators, isArray, ss, REQUIRED, getParams, enforce } from './shared';
 import { pick, isObject, isEmpty } from './utils';
 import { ValidationError } from 'meteor/mdg:validation-error';
 import { flatten, unflatten } from 'flat'
 import { check as c } from 'meteor/check';
 
-const settings = {
-  ...sharedSettings,
+const config = {
+  ...ss,
   autoCheck: true,
   autoAttachJSONSchema: true,
   validationAction: 'error',
@@ -27,8 +27,8 @@ const typeMap = {
   // BigInt: 'long' // untested, commenting out for now. also the team that works on the mongo node driver is working on some things around this so let's wait to see what they do. https://jira.mongodb.org/browse/NODE-3126
 };
 
-const configure = config => {
-  c(config, {
+const configure = options => {
+  c(options, {
     basePath: Match.Maybe(String),
     autoCheck: Match.Maybe(Boolean),
     autoAttachJSONSchema: Match.Maybe(Boolean),
@@ -37,45 +37,65 @@ const configure = config => {
     additionalBsonTypes: Match.Maybe(Object)
   });
 
-  if (!isEmpty(config.additionalBsonTypes)) {
-    Object.assign(typeMap, config.additionalBsonTypes)
+  if (!isEmpty(options.additionalBsonTypes)) {
+    Object.assign(typeMap, options.additionalBsonTypes)
   }
 
-  return Object.assign(settings, config);
+  return Object.assign(config, options);
 }
 
-const skipAutoCheck = () => settings.autoCheck = false;
+const skipAutoCheck = () => config.autoCheck = false;
 
-const deepPartialify = (obj) => {
-  return Object.entries(obj).reduce((acc, [k, v]) => {
-    const { value, optional, anyOf } = getValue(v);
+const deepPartialify = obj => {
+  const rules = [];
 
-    if (optional) {
-      acc[k] = Optional(...Object.values(deepPartialify(v)))
-    } else if (anyOf) {
-      acc[k] = Optional(AnyOf(...Object.values(deepPartialify(value))));
-    } else if (isObject(value) && value.hasOwnProperty('type')) {
-      const { type, ...conditions } = value;
+  const sculpt = (obj, currentPath = [], skip = false) => {
+    return Object.entries(obj).reduce((acc, [k, v]) => {
+      const path = skip ? currentPath : [...currentPath, k]; // we don't want to add Optional or AnyOf keys – 'pattern', '0' – to the path which we use for $rules so we use skip
+      const { value, optional, anyOf } = getValue(v);
 
-      if (Object.keys(conditions).some(i => !allowedKeywords.includes(i))) { // this prevents a situation where the user has a {type: } as part of their schema but did not intend to use it to create conditions
-        acc[k] = Optional(deepPartialify(value))
-      } else {
-        if (isEmpty(conditions)) {
-          acc[k] = Optional(type)
+      if (optional) {
+        acc[k] = Optional(...Object.values(sculpt(v, path, true)));
+      } else if (anyOf) {
+        acc[k] = Optional(AnyOf(...Object.values(sculpt(value, path, true))));
+      } else if (isObject(value) && value.hasOwnProperty('type')) {
+        const { type, ...conditions } = value;
+        const { where, ...restConditions } = conditions;
+        const deps = typeof where === 'function' ? getParams(where).filter(n => n !== k) : [];
+
+        if (Object.keys(conditions).some(i => !allowed.includes(i))) {
+          acc[k] = Optional(sculpt(value));
         } else {
-          const { value: tValue, optional: tOptional } = getValue(type);
-          acc[k] = tOptional ? Optional(Where({ type: tValue, ...conditions })) : Optional(Where({ type, ...conditions }))
+          if (isEmpty(conditions)) {
+            acc[k] = Optional(type);
+          } else {
+            const { value: tValue, optional: tOptional } = getValue(type);
+            const finalConditions = deps.length ? restConditions : conditions;
+            acc[k] = tOptional ? Optional(Where({ type: tValue, ...finalConditions })) : Optional(Where({ type, ...finalConditions }));
+          }
         }
+
+        if (deps.length) {
+          rules.push({
+            path,
+            rule: where,
+            deps
+          });
+        }
+      } else if (isArray(value)) {
+        acc[k] = isArray(value[0]) ? Optional([Where({ type: value })]) : Optional([...Object.values(sculpt(v, path))]);
+      } else if (isObject(value)) {
+        acc[k] = Optional(sculpt(value, path));
+      } else {
+        acc[k] = Optional(v);
       }
-    } else if (isArray(value)) {
-      acc[k] = isArray(value[0]) ? Optional([Where({ type: value })]) : Optional([...Object.values(deepPartialify(v))]) // isArray(value[0]) checks for 2d array [[]]
-    } else if (isObject(value)) {
-      acc[k] = Optional(deepPartialify(value));
-    } else {
-      acc[k] = Optional(v);
-    }
-    return acc;
-  }, {});
+      return acc;
+    }, {});
+  };
+
+  const result = sculpt(obj);
+  rules.length && (result.$rules = rules);
+  return result;
 };
 
 const minProps = {
@@ -143,9 +163,9 @@ const createJSONSchema = (obj) => {
       } else if (anyOf) {
         return { anyOf: value.map(i => createJSONSchema({ items: i }).properties.items) }
       } else if (isObject(value) && value.hasOwnProperty('type')) {
-        const { type, ...conditions } = value;
+        const { type, where, ...conditions } = value;
 
-        if (Object.keys(conditions).some(i => !allowedKeywords.includes(i))) { // this prevents a situation where the user has a {type: } as part of their schema but did not intend to use it to create conditions
+        if (Object.keys(conditions).some(i => !allowed.includes(i))) { // this prevents a situation where the user has a {type: } as part of their schema but did not intend to use it to create conditions
           return createJSONSchema(value);
         } else {
           const { value: typeValue, optional } = getValue(type);
@@ -200,24 +220,24 @@ const db = MongoInternals.defaultRemoteCollectionDriver().mongo.db;
 const addSchema = async (name, schema) => {
   return await db.command({
     collMod: name,
-    validationAction: settings.validationAction,
-    validationLevel: settings.validationLevel,
+    validationAction: config.validationAction,
+    validationLevel: config.validationLevel,
     validator: { $jsonSchema: schema },
   });
 };
 
 Mongo.Collection.prototype.attachSchema = async function(schema = undefined) {
   try {
-    const schemaToAttach = schema ? schema : (require(`${settings.basePath}/${this._name}/schema.js`)).schema;
+    const schemaToAttach = schema ? schema : (require(`${config.basePath}/${this._name}/schema.js`)).schema;
     if (!schemaToAttach) {
       throw new Error('No schema found');
     }
 
     const collection = this;
-    collection.schema = { ...shapeSchema(schemaToAttach), '$id': `/${collection._name}` };
+    collection.schema = { ...shape(schemaToAttach), '$id': `/${collection._name}` };
     collection._schemaDeepPartial = deepPartialify({ ...schemaToAttach, '$id': `/${collection._name}` });
 
-    if (!settings.autoAttachJSONSchema) { // optional setting that allows user to not attach a JSONSchema to the collection in the db
+    if (!config.autoAttachJSONSchema) { // optional setting that allows user to not attach a JSONSchema to the collection in the db
       return;
     }
 
@@ -261,27 +281,32 @@ const transformModifier = modifier => flatten(Object.entries(modifier).reduce((a
 }, {}), { safe: true }); // safe: true preserves arrays when using flatten
 
 const check = (data, schema, { full = false } = {}) => { // the only reason we don't have this in shared is to reduce bundle size on the client
-  const dataHasModifiers = data && hasModifiers(data);
-  const transformedModifier = dataHasModifiers && transformModifier(data);
-  const dataToCheck = dataHasModifiers ? unflatten(transformedModifier) : data;
+  const dataHasOperators = data && hasOperators(data);
+  const transformedModifier = dataHasOperators && transformModifier(data);
+  const dataToCheck = dataHasOperators ? unflatten(transformedModifier) : data;
 
   const schemaIsObject = isObject(schema);
   const { $id, ...schemaRest } = schemaIsObject ? schema : {}; // we don't need to check $id, so we remove it
-  const shapedSchema = schemaIsObject ? (schema['$id'] ? schemaRest : dataHasModifiers ? deepPartialify(schema) : shapeSchema(schema)) : {}; // if we have an $id, then we've already shaped / deepPartialified as needed so we don't need to do it again, otherwise a custom schema has been passed in and it needs to be shaped / deepPartialified
+  const { $rules, ...shapedSchema } = schemaIsObject ? (schema['$id'] ? schemaRest : dataHasOperators ? deepPartialify(schema) : shape(schema)) : {}; // if we have an $id, then we've already shaped / deepPartialified as needed so we don't need to do it again, otherwise a custom schema has been passed in and it needs to be shaped / deepPartialified
 
   if (full) {
     delete shapedSchema._id // we won't have an _id when doing an insert with full, so we remove it from the schema
   }
 
-  const schemaToCheck = schemaIsObject ? ((dataHasModifiers || full) ? shapedSchema : pick(shapedSchema, Object.keys(dataToCheck))) : schema; // basically we only want to pick when necessary, e.g. on the initial check with the args passed in from the client to the server
+  const schemaToCheck = schemaIsObject ? ((dataHasOperators || full) ? shapedSchema : pick(shapedSchema, Object.keys(dataToCheck))) : schema; // basically we only want to pick when necessary, e.g. on the initial check with the args passed in from the client to the server
 
   try {
     c(dataToCheck, schemaToCheck);
+
+    $rules && enforce(dataToCheck, $rules)
+
     return true;
   } catch (error) {
-    const message = error.message?.includes('Match.Where') ? `${error.path} failed condition` : `${error.toString().replace('Error: ', '').replace('Match error: ', '')}` // replaceAll is Node 15+ .message?.replaceAll('Match error: ', '') || error
-    const type = message.toLowerCase().includes('missing') ? 'missing' : 'invalid';
+    const formattedMessage = error.message?.includes('Match.Where') ? `${error.path} failed condition` : `${error.message.replace(/\b(Match error:|Error:)\s*/g, '')}` // replaceAll is Node 15+ .message?.replaceAll('Match error: ', '')
+    const message = formattedMessage === REQUIRED ? `${REQUIRED} '${error.path}'` : formattedMessage;
+    const type = message.includes('Missing') ? 'required' : message.includes('Expected') ? 'type' : 'condition';
     const name = error.path || message.split("'")[1];
+
     throw new ValidationError([{ name, type, message }]);
   }
 };
@@ -292,16 +317,16 @@ const check = (data, schema, { full = false } = {}) => { // the only reason we d
 const writeMethods = ['insert', 'update', 'upsert'];
 Meteor.startup(() => {
   // autoCheck defaults to true but if user configures it to be false, then we don't wrap the write operation methods
-  Meteor.isServer && settings.autoCheck && writeMethods.forEach(methodName => {
+  Meteor.isServer && config.autoCheck && writeMethods.forEach(methodName => {
     const method = Mongo.Collection.prototype[methodName];
     Mongo.Collection.prototype[methodName] = function(...args) {
       const collection = this;
       const { _name, schema, _schemaDeepPartial } = collection;
 
       // autoCheck can also be skipped on a one-off basis per method call, so we check here if that's the case
-      if (!settings.autoCheck) {
+      if (!config.autoCheck) {
         const result = method.apply(collection, args);
-        settings.autoCheck = true;
+        config.autoCheck = true;
         return result;
       }
 
@@ -329,5 +354,5 @@ Meteor.startup(() => {
   });
 });
 
-const EasySchema = { settings, configure, skipAutoCheck }
+const EasySchema = { config, configure, skipAutoCheck, REQUIRED }
 export { Integer, Any, Optional, AnyOf, check, createJSONSchema, EasySchema };

@@ -1,7 +1,9 @@
 import { Tinytest } from 'meteor/tinytest';
 import { Mongo } from 'meteor/mongo';
-import { createJSONSchema, Integer, Any, Optional, AnyOf, check } from 'meteor/jam:easy-schema';
-import { shapeSchema, Where } from './shared.js';
+import { createJSONSchema, Integer, Any, Optional, AnyOf, check, EasySchema } from 'meteor/jam:easy-schema';
+import { shape, Where, getParams } from './shared.js';
+import { deepPartialify } from './easy-schema-server.js';
+import { isEqual } from './utils.js';
 import { Decimal } from 'meteor/mongo-decimal';
 import { check as c, Match } from 'meteor/check';
 
@@ -43,7 +45,11 @@ const testSchema = {
   arrayOfRegexStringsWithArrayMinMax: {type: [{type: String, regex: /com$/}], min: 1, max: 2},
   anyOf: AnyOf([String], [Date]),
   arrayAnyOf: [AnyOf(String, Number)],
-  any: Any
+  any: Any,
+  simpleWhere: {type: String, where: value => value === 'simple'},
+  dependWhere: {type: String, where: ({text, dependWhere}) => {
+    if (text === 'stuff' && !dependWhere) throw 'nope'
+  }}
 };
 
 const testSchemaShapedManual = {
@@ -86,7 +92,12 @@ const testSchemaShapedManual = {
   arrayOfRegexStringsWithArrayMinMax: Where({type: [String], regex: /.com$/, min: 1, max: 2}),
   anyOf: AnyOf([String], [Date]),
   arrayAnyOf: [AnyOf(String, Number)],
-  any: Any
+  any: Any,
+  simpleWhere: Where({type: String, where: value => value === 'simple'}),
+  dependWhere: Where({type: String}),
+  $rules: [{path: ['dependWhere'], deps: ['text'], rule: ({text, dependWhere}) => {
+    if (text === 'stuff' && !dependWhere) throw 'nope'
+  }}]
 };
 
 const schemaAsIs = {
@@ -104,7 +115,7 @@ const schemaAsIs = {
   arrayOfOptionalInts: [Optional(Integer)],
   arrayOfOptionalObjs: [Optional({hi: String, another: Number})],
   optionalObject: Optional({thing: String, optionalString: Optional(String)}),
-  anyOf: AnyOf([String], [Date])
+  anyOf: AnyOf([String], [Date]),
 }
 
 const addressSchema = {
@@ -117,7 +128,7 @@ const personSchema = {
   _id: String,
   name: String,
   homeAddress: addressSchema,
-  billingAddress: Optional(addressSchema)
+  billingAddress: Optional(addressSchema),
 }
 
 const personSchemaShapedManual = {
@@ -162,9 +173,9 @@ const messageSchema = {
 }
 
 /*console.log('messageSchema SHAPED');
-console.dir(shapeSchema(messageSchema), {depth: null})
+console.dir(shape(messageSchema), {depth: null})
 console.log('messageSchema JSONSchema');
-console.dir(createJSONSchema(messageSchema), {depth: null});  */
+console.dir(createJSONSchema(messageSchema), {depth: null}); */
 
 /// String ///
 
@@ -682,6 +693,92 @@ const anyOfDataFail = {
 }
 ///
 
+/// Where ///
+// simple
+const whereSchema = {
+  _id: Optional(String),
+  string: {type: String, where: value => {
+    return value === 'stuff'
+  }}
+}
+const whereData = {
+  _id: '1',
+  string: 'stuff'
+}
+const whereDataFail = {
+  _id: '1',
+  string: 'hi'
+}
+
+// dependencies
+const dependentWhereSchema = {
+  _id: Optional(String),
+  password: String,
+  confirmPassword: {type: String, where: ({password, confirmPassword}) => {
+    if (confirmPassword !== password) throw 'passwords must match'
+  }}
+}
+const dependentWhereData = {
+  _id: '1',
+  password: 'test123',
+  confirmPassword: 'test123'
+}
+const dependentWhereDataFail = {
+  _id: '1',
+  password: 'test123',
+  confirmPassword: 'fail'
+}
+
+const requiredDependentSchema = {
+  _id: Optional(String),
+  sibling: Optional(String),
+  thing: {type: Optional(String), where: ({sibling, thing}) => {
+    if (sibling && !thing) throw EasySchema.REQUIRED
+  }}
+}
+const requiredDependentData = {
+  _id: '1'
+}
+
+const requiredDependentData2 = {
+  _id: '1',
+  thing: 'hi'
+}
+
+const requiredDependentData3 = {
+  _id: '1',
+  sibling: 'test',
+  thing: 'hi'
+}
+
+const requiredDependentDataFail = {
+  _id: '1',
+  sibling: 'test'
+}
+
+const requiredDependentDataFail2 = {
+  _id: '1',
+  thing: false
+}
+
+// nested dependencies
+const address = {
+  street: String,
+  city: String,
+  state: {
+    full: String,
+    code: {type: String, where: ({full}) => { if (full !== 'Texas') throw 'nope' }}
+  }
+}
+
+const nestedSchema = {
+  _id: String,
+  name: String,
+  homeAddress: address,
+  billingAddress: Optional(address),
+  stuff: String,
+  another: [{name: String, age: Number, foo: {type: String, where: ({age}) => {if (age > 40) throw 'old'}}}]
+}
 
 
 // test data for modifiers
@@ -800,7 +897,6 @@ if (Meteor.isServer) {
       thingId = Things.insert(thingData);
       test.isTrue(true)
     } catch(error) {
-      console.log('insert error', error);
       test.isTrue(error = undefined);
     }
   });
@@ -1102,18 +1198,18 @@ if (Meteor.isServer) {
   });
 
   Tinytest.add('returns the same schema when no extra shaping needed', function(test) {
-    const shapedSchema = shapeSchema(schemaAsIs);
+    const shapedSchema = shape(schemaAsIs);
     test.equal(shapedSchema, schemaAsIs);
   });
 
   Tinytest.add('returns a shaped schema when needs it', function(test) {
-    const shapedSchema = shapeSchema(testSchema);
+    const shapedSchema = shape(testSchema);
     // console.log('SHAPED');
     // console.dir(shapedSchema, {depth: null});
     // validNumber and validString are instances of Match.Where which is a function. can't compare functions directly for equality so taking those out and then comparing them as their strings to for equality
     // maybe there is a better way to test function equality
-    const { people, minMaxString, minString, maxString, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, ...rest} = shapedSchema;
-    const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, ...restManual} = testSchemaShapedManual;
+    const { people, minMaxString, minString, maxString, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, $rules, ...rest} = shapedSchema;
+    const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, $rules: r, ...restManual} = testSchemaShapedManual;
 
     const { state, ...restAddr } = address;
     const { state: sM, ...restAddrM } = addr;
@@ -1139,10 +1235,14 @@ if (Meteor.isServer) {
     test.equal(optionalArrayOfMinMaxInt.pattern[0].condition.toString(), Object.values(oAMMI)[0][0].condition.toString());
     test.equal(minMaxArray.condition.toString(), mmA.condition.toString());
     test.equal(arrayOfRegexStringsWithArrayMinMax.condition.toString(), aRSWAMM.condition.toString());
+    test.equal(simpleWhere.condition.toString(), sW.condition.toString());
+    test.equal(dependWhere.condition.toString(), dW.condition.toString());
+    test.equal(JSON.stringify($rules), `[{"path":["dependWhere"],"deps":["text"]}]`)
+    test.equal($rules[0].rule.toString().includes(`if (text === 'stuff' && !dependWhere) throw 'nope'`), true)
   });
 
   Tinytest.add('handles embedded subschema', function(test) {
-    const shapedSchema = shapeSchema(personSchema);
+    const shapedSchema = shape(personSchema);
 
     const { homeAddress, billingAddress, ...rest} = shapedSchema;
     const { homeAddress: hA, billingAddress: bA, ...restManual} = personSchemaShapedManual;
@@ -1725,6 +1825,141 @@ if (Meteor.isServer) {
     }
   });
 
+  Tinytest.add('condition - simple where', function(test) {
+    try {
+      const result = check(whereDataFail, whereSchema)
+    } catch(error) {
+      test.isTrue(error)
+      test.equal(error.details[0].message,`failed where condition in field string`)
+    }
+
+    try {
+      const result = check(whereData, whereSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - dependent where', function(test) {
+    try {
+      check(dependentWhereDataFail, dependentWhereSchema)
+    } catch(error) {
+      test.isTrue(error)
+      test.equal(error.details[0].message,`passwords must match`)
+    }
+
+    try {
+      check(dependentWhereData, dependentWhereSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - dependent where update', function(test) {
+    try {
+      check({$set: {password: 'hello123', confirmPassword: 'nope123'}}, dependentWhereSchema)
+    } catch(error) {
+      test.isTrue(error)
+      test.equal(error.details[0].message,`passwords must match`)
+    }
+
+    try {
+      check({$set: {password: 'hello123', confirmPassword: 'hello123'}}, dependentWhereSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - dependent where update 2', function(test) {
+    try {
+      check({$set: {password: 'hello123'}}, dependentWhereSchema)
+    } catch(error) {
+      test.isTrue(error)
+      test.equal(error.details[0].message,`passwords must match`)
+    }
+  });
+
+  Tinytest.add('condition - required dependent where', function(test) {
+    try {
+      check(requiredDependentDataFail, requiredDependentSchema)
+    } catch(error) {
+      test.isTrue(error)
+      test.equal(error.details[0].message,`Missing key 'thing'`)
+    }
+
+    try {
+      check(requiredDependentDataFail2, requiredDependentSchema)
+    } catch(error) {
+      test.isTrue(error)
+      test.isTrue(error.details[0].message.includes('Expected'))
+    }
+
+    try {
+      check(requiredDependentData, requiredDependentSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+
+    try {
+      check(requiredDependentData2, requiredDependentSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+
+    try {
+      check(requiredDependentData3, requiredDependentSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - nested where', function (test) {
+    try {
+      check({
+        billingAddress: {street: 'thing', city: 'no', state: {full: 'fail', code: 'tx'}},
+      }, nestedSchema)
+    } catch(error) {
+      test.isTrue(error)
+      test.equal(error.details[0].message,`nope`)
+    }
+
+    try {
+      check({
+        billingAddress: {street: 'thing', city: 'no', state: {full: 'Texas', code: 'tx'}},
+      }, nestedSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - nested array where', function (test) {
+    try {
+      check({
+        another: [{name: 'bob', age: 21, foo: 'f'}, {name: 'jim', age: 41, foo: 'g'}],
+      }, nestedSchema)
+    } catch(error) {
+      test.isTrue(error)
+      test.equal(error.details[0].message,`old`)
+    }
+
+    try {
+      check({
+        another: [{name: 'bob', age: 21, foo: 'f'}, {name: 'jim', age: 39, foo: 'g'}],
+      }, nestedSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+
+  });
+
   Tinytest.add('converts an easy schema to a JSONSchema', function(test) {
     const jsonSchema = createJSONSchema(testSchema);
     // console.log('jsonSchema');
@@ -1791,7 +2026,9 @@ if (Meteor.isServer) {
        'arrayOfRegexStringsWithArrayMinMax': { 'bsonType': 'array', 'items': { 'bsonType': 'string', 'pattern': /com$/ }, 'minItems': 1, 'maxItems': 2 },
        'anyOf': {'anyOf': [{ 'bsonType': 'array', 'items': { 'bsonType': 'string' } }, { 'bsonType': 'array', 'items': { 'bsonType': 'date' } }]},
        'arrayAnyOf': { 'bsonType': 'array', 'items': {'anyOf': [{'bsonType': 'string'}, {'bsonType': 'double'}]}},
-       'any': {}
+       'any': {},
+       'simpleWhere': { 'bsonType': 'string' },
+       'dependWhere': { 'bsonType': 'string' }
       },
       'required': [
        'text',        'emails',
@@ -1807,14 +2044,15 @@ if (Meteor.isServer) {
        'regexString', 'arrayOfRegexStrings',
        'arrayOfOptionalMinMaxNum', 'minMaxArray',
        'arrayOfRegexStringsWithArrayMinMax', 'anyOf',
-       'arrayAnyOf', 'any'
+       'arrayAnyOf', 'any',
+       'simpleWhere', 'dependWhere'
       ],
       'additionalProperties': false
     });
   });
 
   Tinytest.add('correctly shapes schema with type property without allowed condition keywords', function(test) {
-    const shapedSchema = shapeSchema(messageSchema);
+    const shapedSchema = shape(messageSchema);
     test.equal(shapedSchema, messageSchema);
   });
 
@@ -1885,5 +2123,83 @@ if (Meteor.isServer) {
       'additionalProperties': false
     });
   });
-}
 
+  Tinytest.add('isEqual - should return true for equal primitive values', function (test) {
+    test.isTrue(isEqual(5, 5));
+    test.isTrue(isEqual('hello', 'hello'));
+    test.isTrue(isEqual(null, null));
+    test.isTrue(isEqual(undefined, undefined));
+  });
+
+  Tinytest.add('isEqual - should return false for different primitive values', function (test) {
+    test.isFalse(isEqual(5, '5'));
+    test.isFalse(isEqual('hello', 'world'));
+    test.isFalse(isEqual(0, false));
+  });
+
+  Tinytest.add('isEqual - should return true for equal arrays', function (test) {
+    test.isTrue(isEqual([1, 2, 3], [1, 2, 3]));
+    test.isTrue(isEqual(['a', 'b', 'c'], ['a', 'b', 'c']));
+    test.isTrue(isEqual([], []));
+  });
+
+  Tinytest.add('isEqual - should return false for different arrays', function (test) {
+    test.isFalse(isEqual([1, 2, 3], [1, 2, 4]));
+    test.isFalse(isEqual(['a', 'b', 'c'], ['a', 'b']));
+    test.isFalse(isEqual([1, 2, 3], '1,2,3'));
+  });
+
+  Tinytest.add('isEqual - should return true for equal objects', function (test) {
+    test.isTrue(isEqual({ a: 1, b: 2 }, { a: 1, b: 2 }));
+    test.isTrue(isEqual({ name: 'John', age: 25 }, { name: 'John', age: 25 }));
+    test.isTrue(isEqual({}, {}));
+  });
+
+  Tinytest.add('isEqual - should return false for different objects', function (test) {
+    test.isFalse(isEqual({ a: 1, b: 2 }, { a: 1, b: 3 }));
+    test.isFalse(isEqual({ name: 'John', age: 25 }, { name: 'John', age: 30 }));
+    test.isFalse(isEqual({ a: 1, b: 2 }, '[object Object]'));
+  });
+
+  Tinytest.add('isEqual - should handle nested structures', function (test) {
+    test.isTrue(isEqual({ a: [1, 2, { b: 'c' }], d: { e: 'f' }, x: [1, 2], y: [[1, 2], [3, 4]] }, { a: [1, 2, { b: 'c' }], d: { e: 'f' }, x: [1, 2], y: [[1, 2], [3, 4]] }));
+    test.isFalse(isEqual({ a: [1, 2, { b: 'c' }], d: { e: 'f' }, x: [1, 2], y: [[1, 2], [3, 4]] }, { a: [1, 2, { b: 'c' }], d: { e: 'g' }, x: [1, 2], y: [[1, 2], [3, 4]] }));
+    test.isFalse(isEqual({ a: [1, 2, { b: 'c' }], d: { e: 'f' }, x: [1, 2], y: [[1, 2], [3, 4]] }, { a: [1, 2, { b: 'c' }], d: { e: 'f' }, x: [1, 2], y: [[1, 2], [30, 4]] }));
+  });
+
+  Tinytest.add('isEqual - should handle nested arrays', function (test) {
+    test.isTrue(isEqual([{a: '1', b: 2, c: {a: 'a', b: 'b'}}, {x: '1', y: 2, z: {a: 'a', b: 'b'}}], [{a: '1', b: 2, c: {a: 'a', b: 'b'}}, {x: '1', y: 2, z: {a: 'a', b: 'b'}}]));
+    test.isFalse(isEqual([{a: '1', b: 2, c: {a: 'a', b: 'b'}}, {x: '1', y: 2, z: {a: 'a', b: 'b'}}], [{a: '1', b: 2, c: {a: 'a', b: 'b'}}, {x: '1', y: 2, z: {a: 'c', b: 'b'}}]));
+  });
+
+  Tinytest.add('isEqual - should handle deeply nested arrays', function (test) {
+    test.isTrue(isEqual([{a: '1', b: 2, c: {a: 'a', b: 'b'}, deep: [{a: '1', b: [1, 2, 3], c: {a: 'a', b: 'b'}}, {x: '1', y: [1, 2, 3], z: {a: 'a', b: 'b'}}]}, {x: '1', y: 2, z: {a: 'a', b: 'b'}}], [{a: '1', b: 2, c: {a: 'a', b: 'b'}, deep: [{a: '1', b: [1, 2, 3], c: {a: 'a', b: 'b'}}, {x: '1', y: [1, 2, 3], z: {a: 'a', b: 'b'}}]}, {x: '1', y: 2, z: {a: 'a', b: 'b'}}]));
+    test.isFalse(isEqual([{a: '1', b: 2, c: {a: 'a', b: 'b'}, deep: [{a: '1', b: [1, 2, 3], c: {a: 'a', b: 'b'}}, {x: '1', y: [1, 2, 3], z: {a: 'a', b: 'b'}}]}, {x: '1', y: 2, z: {a: 'a', b: 'b'}}], [{a: '1', b: 2, c: {a: 'a', b: 'b'}, deep: [{a: '1', b: [1, 2, 3], c: {a: 'a', b: 'c'}}, {x: '1', y: [1, 2, 3], z: {a: 'a', b: 'b'}}]}, {x: '1', y: 2, z: {a: 'a', b: 'b'}}]));
+  });
+
+  Tinytest.add('isEqual - should handle edge cases', function (test) {
+    test.isTrue(isEqual(undefined, undefined));
+    test.isTrue(isEqual(null, null));
+  });
+
+  Tinytest.add('getParams - successfully gets params', function (test) {
+    const fn = text => { if (text !== 'stuff') throw 'text must be "stuff"' }
+    const fn1 = ({text}) => { if (text !== 'stuff') throw 'text must be "stuff"' }
+    const fn2 = ({text, checked}) => { if (text === 'stuff' && !checked) throw 'required' }
+    const fn3 = ({checked, text}) => { if (text === 'stuff' && !checked) throw 'required' }
+    const fn4 = ({text, checked, thing}) => { if (text !== 'stuff') throw 'text must be "stuff"' }
+    const fn5 = function(text) { if (text !== 'stuff') throw 'text must be "stuff"'}
+    const fn6 = function({text, checked}) { if (text !== 'stuff') throw 'text must be "stuff"'}
+    const fn7 = function({text, checked, thing}) { if (text !== 'stuff') throw 'text must be "stuff"'}
+
+    test.equal(getParams(fn), [])
+    test.equal(getParams(fn1), ['text'])
+    test.equal(getParams(fn2), ['text', 'checked'])
+    test.equal(getParams(fn3), ['checked', 'text'])
+    test.equal(getParams(fn4), ['text', 'checked', 'thing'])
+    test.equal(getParams(fn5), [])
+    test.equal(getParams(fn6), ['text', 'checked'])
+    test.equal(getParams(fn7), ['text', 'checked', 'thing'])
+  });
+
+}

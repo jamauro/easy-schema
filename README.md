@@ -149,9 +149,10 @@ arrayAnyOf: [AnyOf(String, Number)] // matches an array of Strings or an array o
 ### Conditions
 You can add conditions to validate against. Here's how you do that:
 
-**`min / max`** – *Strings, Numbers, Integers, Arrays, Objects*
+#### **`min / max`**
+*Strings, Numbers, Integers, Arrays, Objects*
 
-min is `greater than or equal to` and max is `less than or equal to`
+min is `greater than or equal to` and max is `less than or equal to`. `min / max` map to the JSON Schema equivalent for the type.
 ```js
 {type: String, min: 1, max: 16} // a string that is at least 1 character and at most 16 characters
 {type: Number, min: 0.1, max: 9.9} // a number greater than or equal to 0.1 and less than or equal to 9.9
@@ -162,11 +163,11 @@ min is `greater than or equal to` and max is `less than or equal to`
 {type: {name: String, age: Optional(Number)}, min: 1, max: 2} // an object with the properties name and age with at least one property and no more than 2 properties
 ```
 
-**`allow`** - *Any Type*
+#### **`allow`**
+*Any Type*
 
-You can specify an array of items that are allowed values with `allow`
+You can specify an array of items that are allowed values with `allow` – it maps to JSON Schema's `enum`
 ```js
-// allow is equivalent to JSON Schema's 'enum'
 {type: String, allow: ['hello', 'hi']}
 {type: Number, allow: [1.2, 6.8, 24.5]}
 {type: Integer, allow: [145, 29]}
@@ -185,23 +186,71 @@ You can specify an array of items that are allowed values with `allow`
 {type: Object, allow: [{hi: 'hi', num: 2}]}
 ```
 
-**`regex`** - *Strings only*
+#### **`regex`**
+*Strings only*
 
+`regex` maps to JSON Schema's `pattern`.
 ```js
-{type: String, regex: /.com$/} // regex is equivalent to JSON Schema's 'pattern'
+{type: String, regex: /.com$/}
 ```
 
-**`unique`** - *Arrays only*
+#### **`unique`**
+*Arrays only*
 
+`unique` maps to JSON Schema's `uniqueItems`.
 ```js
-{type: [Number], unique: true} // an array of numbers that must be unique, e.g. [1, 2, 3]. [1, 2, 1] would fail. unique is equivalent to JSON Schema's 'uniqueItems'
+{type: [Number], unique: true} // an array of numbers that must be unique, e.g. [1, 2, 3]. [1, 2, 1] would fail.
 ```
 
-**`additionalProperties`** - *Objects only*
+#### **`additionalProperties`**
+*Objects only*
 
 By default, additionalProperties is `false`, i.e. what you define in the schema is what is expected to match the data in the db. If you want to accept additionalProperties, you can do that like this:
 ```js
 {type: {name: String, createdAt: Date}, additionalProperties: true}
+```
+
+#### **`where`**
+*Any Type*
+
+`where` is a custom function that you can use to validate logic and even create a dependency on another property of your schema. Throw the error message you want as a plain string. You can return `true` inside `where` if you want, but it's taken care of for you if you want to keep it concise.
+
+`Note`: Currently, unlike the other conditions, there isn't a great way to map `where` to JSON Schema so the `where` function will **not** be translated to Mongo JSON Schema.
+
+Here are some examples of how you might use this:
+
+You can make a property conditionally required on its value.
+```js
+{
+  // ... //
+  text: {type: Optional(String), where: text => { if (text === 'world') throw EasySchema.REQUIRED }}, // you can also destructure text in the where function if you prefer
+  // ... //
+}
+```
+
+You can make a property of the schema dependent on the value of a sibling property.
+`Important`: you must destructure the params.
+
+```js
+{
+  // ... //
+  text: Optional(String),
+  status: {type: Optional(String), where: ({text, status}) => {
+    if (text && !status) throw EasySchema.REQUIRED
+  }},
+  // ... //
+}
+```
+
+```js
+{
+  // ... //
+  password: String,
+  confirmPassword: {type: String, where: ({password, confirmPassword}) => {
+    if (confirmPassword !== password) throw 'Passwords must match'
+  }},
+  // ... //
+}
 ```
 
 ### Blackboxes
