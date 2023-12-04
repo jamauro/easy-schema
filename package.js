@@ -1,6 +1,6 @@
 Package.describe({
-  name: 'fredericomaia:easy-schema',
-  version: '1.1.1',
+  name: 'jam:easy-schema',
+  version: '1.1.0-alpha.300.19',
   summary: 'An easy way to add schema validation for Meteor apps',
   git: 'https://github.com/fredmaiaarantes/easy-schema',
   documentation: 'README.md'
