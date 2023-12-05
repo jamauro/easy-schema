@@ -246,8 +246,8 @@ Mongo.Collection.prototype.attachSchema = async function(schema = undefined) {
     const collectionNames = (await db.listCollections({}, { nameOnly: true }).toArray()).map(c => c.name);
     if (!collectionNames.includes(collection._name)) {
       skipAutoCheck();
-      collection.insert({ _id: 'setup schema' });
-      collection.remove({ _id: 'setup schema' });
+      await collection.insertAsync({ _id: 'setup schema' });
+      await collection.removeAsync({ _id: 'setup schema' });
     }
 
     const mongoJSONSchema = createJSONSchema(schemaToAttach);
@@ -314,7 +314,8 @@ const check = (data, schema, { full = false } = {}) => { // the only reason we d
 // Wrap DB write operation methods
 // Only run on the server since we're already validating through Meteor methods.
 // This is validation of the data being written before it's inserted / updated / upserted.
-const writeMethods = ['insert', 'update', 'upsert'];
+export const isMeteor2 = Meteor.release.split('@')[1].split('.')[0] === '2'; // eventually remove this when Meteor drops *Async post 3.0
+const writeMethods = ['insert', 'update', 'upsert'].map(m => isMeteor2 ? m : `${m}Async`); // eventually this .map when Meteor drops *Async post 3.0
 Meteor.startup(() => {
   // autoCheck defaults to true but if user configures it to be false, then we don't wrap the write operation methods
   Meteor.isServer && config.autoCheck && writeMethods.forEach(methodName => {
@@ -334,8 +335,8 @@ Meteor.startup(() => {
         return method.apply(collection, args);
       }
 
-      const isUpdate = methodName === 'update';
-      const isUpsert = methodName === 'upsert' || (isUpdate && (args[2]?.hasOwnProperty('upsert') || false) && args[2]['upsert']);
+      const isUpdate = ['update', 'updateAsync'].includes(methodName);
+      const isUpsert = ['upsert', 'upsertAsync'].includes(methodName) || (isUpdate && (args[2]?.hasOwnProperty('upsert') || false) && args[2]['upsert']);
       const isUserServicesUpdate = isUpdate && _name === 'users' && Object.keys(Object.values(args[1])[0])[0].split('.')[0] === 'services';
 
       // If you do have a Meteor.users schema, then this prevents a check on Meteor.users.services updates that run periodically to resume login tokens and other things that don't need validation

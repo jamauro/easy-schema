@@ -2,7 +2,6 @@ import { Tinytest } from 'meteor/tinytest';
 import { Mongo } from 'meteor/mongo';
 import { createJSONSchema, Integer, Any, Optional, AnyOf, check, EasySchema } from 'meteor/jam:easy-schema';
 import { shape, Where, getParams } from './shared.js';
-import { deepPartialify } from './easy-schema-server.js';
 import { isEqual } from './utils.js';
 import { Decimal } from 'meteor/mongo-decimal';
 import { check as c, Match } from 'meteor/check';
@@ -890,156 +889,168 @@ const thingData = {
 }
 
 if (Meteor.isServer) {
+  import { isMeteor2 } from './easy-schema-server.js';
+  if (isMeteor2) { // simple test for Meteor 2.x apps that are in the process of migrating to 3.0
+    Tinytest.add('insert - fibers - validates successfully against server ', (test) => {
+      try {
+        const result = Things.insert(thingData);
+        test.isTrue(true)
+      } catch(error) {
+        test.isTrue(error = undefined);
+      }
+    });
+  }
+
   let thingId;
-  Tinytest.add('insert - validates successfully against server ', function (test) {
+  Tinytest.addAsync('insert - validates successfully against server ', async (test) => {
      try {
-      Things.remove({});
-      thingId = Things.insert(thingData);
+      await Things.removeAsync({});
+      thingId = await Things.insertAsync(thingData);
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $set embedded array of objects with positional $', function (test) {
+  Tinytest.addAsync('update - $set embedded array of objects with positional $', async (test) => {
      try {
-      Things.update({'readBy.userId': '3'}, {$set: {'readBy.$.userId': '4', numOrInt: 25}}); //, numOrInt: 14.1, decimal: Decimal(486394763.2)
+      await Things.updateAsync({'readBy.userId': '3'}, {$set: {'readBy.$.userId': '4', numOrInt: 25}}); //, numOrInt: 14.1, decimal: Decimal(486394763.2)
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $set embedded array of objects with positional $[]', function (test) {
+  Tinytest.addAsync('update - $set embedded array of objects with positional $[]', async (test) => {
      try {
-      Things.update({'readBy.userId': '2'}, {$set: {'readBy.$[].userId': '20', numOrInt: 25}}); //, numOrInt: 14.1, decimal: Decimal(486394763.2)
+      await Things.updateAsync({'readBy.userId': '2'}, {$set: {'readBy.$[].userId': '20', numOrInt: 25}}); //, numOrInt: 14.1, decimal: Decimal(486394763.2)
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $set and $inc', function (test) {
+  Tinytest.addAsync('update - $set and $inc', async (test) => {
      try {
-      Things.update(thingId, {$set: {numOrInt: 14.1}, $inc: {int: 11}}); // decimal: Decimal(4.863947632)
+      await Things.updateAsync(thingId, {$set: {numOrInt: 14.1}, $inc: {int: 11}}); // decimal: Decimal(4.863947632)
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $set embedded object', function (test) {
+  Tinytest.addAsync('update - $set embedded object', async (test) => {
      try {
-      Things.update(thingId, {$set: {'obj.different': 'another'}});
+      await Things.updateAsync(thingId, {$set: {'obj.different': 'another'}});
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $set array', function (test) {
+  Tinytest.addAsync('update - $set array', async (test) => {
      try {
-      Things.update(thingId, {$set: {arrOfInts: [2.2, 4.3]}});
+      await Things.updateAsync(thingId, {$set: {arrOfInts: [2.2, 4.3]}});
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $set array with positional $', function (test) {
+  Tinytest.addAsync('update - $set array with positional $', async (test) => {
      try {
-      Things.update({_id: thingId, arrOfInts: 4.3}, {$set: {'arrOfInts.$': 5}});
+      await Things.updateAsync({_id: thingId, arrOfInts: 4.3}, {$set: {'arrOfInts.$': 5}});
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $set array with all positional $[]', function (test) {
+  Tinytest.addAsync('update - $set array with all positional $[]', async (test) => {
      try {
-      Things.update({_id: thingId}, {$inc: {'arrOfInts.$[]': 10}});
+      await Things.updateAsync({_id: thingId}, {$inc: {'arrOfInts.$[]': 10}});
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $set blackboxArray', function (test) {
+  Tinytest.addAsync('update - $set blackboxArray', async (test) => {
      try {
-      Things.update(thingId, {$set: {blackboxArray: ['a', 'b']}});
+      await Things.updateAsync(thingId, {$set: {blackboxArray: ['a', 'b']}});
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $set blackbox object', function (test) {
+  Tinytest.addAsync('update - $set blackbox object', async (test) => {
      try {
-      Things.update(thingId, {$set: {blackbox: {hello: 'hello'}}});
+      await Things.updateAsync(thingId, {$set: {blackbox: {hello: 'hello'}}});
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $addToSet', function (test) {
+  Tinytest.addAsync('update - $addToSet', async (test) => {
      try {
-      Things.update(thingId, {$addToSet: {readBy: {userId: '100', lastRead: new Date()}}});
+      await Things.updateAsync(thingId, {$addToSet: {readBy: {userId: '100', lastRead: new Date()}}});
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $addToSet $each', function (test) {
+  Tinytest.addAsync('update - $addToSet $each', async (test) => {
      try {
-      Things.update(thingId, {$addToSet: {arr: {$each: ['4', '5']}}});
+      await Things.updateAsync(thingId, {$addToSet: {arr: {$each: ['4', '5']}}});
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $push', function (test) {
+  Tinytest.addAsync('update - $push', async (test) => {
      try {
-      Things.update(thingId, {$push: {readBy: {userId: '100', lastRead: new Date()}}});
+      await Things.updateAsync(thingId, {$push: {readBy: {userId: '100', lastRead: new Date()}}});
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $push $each', function (test) {
+  Tinytest.addAsync('update - $push $each', async (test) => {
      try {
-      Things.update(thingId, {$push: {arr: {$each: ['6', '7']}}});
+      await Things.updateAsync(thingId, {$push: {arr: {$each: ['6', '7']}}});
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $currentDate', function (test) {
+  Tinytest.addAsync('update - $currentDate', async (test) => {
      try {
-      Things.update(thingId, {$currentDate: {created: true}});
+      await Things.updateAsync(thingId, {$currentDate: {created: true}});
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('update - $bit', function (test) {
+  Tinytest.addAsync('update - $bit', async (test) => {
      try {
-      Things.update(thingId, {$set: {int: 13}});
-      Things.update(thingId, {$bit: {int: {and: 10}}});
+      await Things.updateAsync(thingId, {$set: {int: 13}});
+      await Things.updateAsync(thingId, {$bit: {int: {and: 10}}});
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
     }
   });
 
-  Tinytest.add('upsert - {upsert: true} validates successfully against server', function (test) {
+  Tinytest.addAsync('upsert - {upsert: true} validates successfully against server', async (test) => {
      try {
-      Things.update({num: 1.4},
+      await Things.updateAsync({num: 1.4},
         {
           $inc: {int: 11},
           $setOnInsert: {
@@ -1063,9 +1074,9 @@ if (Meteor.isServer) {
     }
   });
 
-  Tinytest.add('upsert - validates successfully against server', function (test) {
+  Tinytest.addAsync('upsert - validates successfully against server', async (test) => {
      try {
-      Things.upsert({num: 1.5},
+      await Things.upsertAsync({num: 1.5},
         {
           $inc: {int: 11},
           $setOnInsert: {
