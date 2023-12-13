@@ -253,6 +253,29 @@ You can make a property of the schema dependent on the value of a sibling proper
 }
 ```
 
+### Customizing Error Messages
+Easy Schema comes with nicely formatted error messages out of the box, but you can easily customize them when you use these conditions:
+* min / max
+* allow
+* regex
+* unique
+
+Here's an example:
+```js
+const schema = {
+  email: {type: String, min: [1, 'You must enter an email'], regex: [/@/, 'You must enter a valid email']}
+}
+```
+
+For anything more involved you can use the [`where`](#where) function. Note that conditions are available as a second parameter:
+```js
+const schema = {
+  email: {type: String, min: 1, regex: /@/, where: (email, {min, regex}) => {
+    // ... something complex that couldn't be handled otherwise ... //
+  }}
+}
+```
+
 ### Blackboxes
 In general, it's recommended to specify what you expect but sometimes it's helpful just to validate against a blackbox, i.e. validating the contents is not important or wanted.
 

@@ -18,6 +18,7 @@ const testSchema = {
   minMaxString: {type: String, min: 0, max: 20},
   minString: {type: String, min: 2},
   maxString: {type: String, max: 5},
+  maxStringCustomError: {type: String, max: [5, 'Too long']},
   minMaxNum: {type: Number, min: 2.5, max: 15.5},
   minNum: {type: Number, min: 2.5},
   maxNum: {type: Number, max: 30.2},
@@ -63,6 +64,7 @@ const testSchemaShapedManual = {
   minMaxString: Where({type: String, min: 0, max: 20}),
   minString: Where({type: String, min: 2}),
   maxString: Where({type: String, max: 5}),
+  maxStringCustomError: Where({type: String, max: [5, 'Too long']}),
   minMaxNum: Where({type: Number, min: 2.5, max: 15.5}),
   minNum: Where({type: Number, min: 2.5}),
   maxNum: Where({type: Number, max: 30.2}),
@@ -192,7 +194,33 @@ const regexDataFail = {
   string: 'test@testmail'
 }
 
+const regexCustomSchema = {
+  _id: Optional(String),
+  string: {type: String, regex: [/.com$/, 'Must be .com']}
+}
+const regexCustomData = {
+  _id: '1',
+  string: 'test@testmail.com'
+}
+const regexCustomDataFail = {
+  _id: '1',
+  string: 'test@testmail'
+}
+
 // min, max, minmax
+const minEmptySchema = {
+  _id: Optional(String),
+  minString: {type: String, min: 1}
+}
+const minEmptyData = {
+  _id: '1',
+  minString: 'a'
+}
+const minEmptyDataFail = {
+  _id: '1',
+  minString: ''
+}
+
 const minSchema = {
   _id: Optional(String),
   minString: {type: String, min: 2}
@@ -236,6 +264,23 @@ const minMaxDataFailHigh = {
   minMaxString: 'abcdef'
 }
 
+const minMaxCustomSchema = {
+  _id: Optional(String),
+  minMaxString: {type: String, min: [3, 'Too low'], max: [5, 'Too high']}
+}
+const minMaxCustomData = {
+  _id: '1',
+  minMaxString: 'abc'
+}
+const minMaxCustomDataFailLow = {
+  _id: '1',
+  minMaxString: 'ab'
+}
+const minMaxCustomDataFailHigh = {
+  _id: '1',
+  minMaxString: 'abcdef'
+}
+
 const allowSchema = {
   _id: Optional(String),
   allowString: {type: String, allow: ['hi', 'bye']}
@@ -245,6 +290,19 @@ const allowData = {
   allowString: 'hi'
 }
 const allowDataFail = {
+  _id: '1',
+  allowString: 'sup'
+}
+
+const allowCustomSchema = {
+  _id: Optional(String),
+  allowString: {type: String, allow: [['hi', 'bye'], 'Must be hi or bye']}
+}
+const allowCustomData = {
+  _id: '1',
+  allowString: 'hi'
+}
+const allowCustomDataFail = {
   _id: '1',
   allowString: 'sup'
 }
@@ -470,6 +528,19 @@ const uniqueArrDataFail = {
   uniqueArr: [1, 2, 1]
 }
 
+const uniqueArrCustomSchema = {
+  _id: Optional(String),
+  uniqueArr: {type: [Number], unique: [true, 'Gotta be unique']}
+}
+const uniqueArrCustomData = {
+  _id: '1',
+  uniqueArr: [1, 2]
+}
+const uniqueArrCustomDataFail = {
+  _id: '1',
+  uniqueArr: [1, 2, 1]
+}
+
 const allowArrSchema = {
   _id: Optional(String),
   allowArr: {type: [[String, Number]], allow: [['hi', 1], ['bye', 2]]}
@@ -483,6 +554,19 @@ const allowArrDataFail = {
   allowArr: ['hi', 3]
 }
 
+const allowArrCustomSchema = {
+  _id: Optional(String),
+  allowArr: {type: [[String, Number]], allow: [[['hi', 1], ['bye', 2]], 'Nope']}
+}
+const allowArrCustomData = {
+  _id: '1',
+  allowArr: ['bye', 2]
+}
+const allowArrCustomDataFail = {
+  _id: '1',
+  allowArr: ['hi', 3]
+}
+
 const allowArrOfObjSchema = {
   _id: String,
   text: [{type: {thing: String, num: Number}, allow: [{thing: 'hi', num: 2}]}]
@@ -492,6 +576,19 @@ const allowArrOfObjData = {
   text: [{thing: 'hi', num: 2}]
 }
 const allowArrOfObjDataFail = {
+  _id: '1',
+  text: [{thing: 'hi', num: 1}]
+}
+
+const allowArrOfObjCustomSchema = {
+  _id: String,
+  text: [{type: {thing: String, num: Number}, allow: [[{thing: 'hi', num: 2}], 'Negative'] }]
+}
+const allowArrOfObjCustomData = {
+  _id: '1',
+  text: [{thing: 'hi', num: 2}]
+}
+const allowArrOfObjCustomDataFail = {
   _id: '1',
   text: [{thing: 'hi', num: 1}]
 }
@@ -889,8 +986,7 @@ const thingData = {
 }
 
 if (Meteor.isServer) {
-  import { isMeteor2 } from './easy-schema-server.js';
-  if (isMeteor2) { // simple test for Meteor 2.x apps that are in the process of migrating to 3.0
+  if (!Meteor.isFibersDisabled) { // simple test for Meteor 2.x apps that are in the process of migrating to 3.0
     Tinytest.add('insert - fibers - validates successfully against server ', (test) => {
       try {
         const result = Things.insert(thingData);
@@ -1219,8 +1315,8 @@ if (Meteor.isServer) {
     // console.dir(shapedSchema, {depth: null});
     // validNumber and validString are instances of Match.Where which is a function. can't compare functions directly for equality so taking those out and then comparing them as their strings to for equality
     // maybe there is a better way to test function equality
-    const { people, minMaxString, minString, maxString, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, $rules, ...rest} = shapedSchema;
-    const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, $rules: r, ...restManual} = testSchemaShapedManual;
+    const { people, minMaxString, minString, maxString, maxStringCustomError, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, $rules, ...rest} = shapedSchema;
+    const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, maxStringCustomError: mxSCE, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, $rules: r, ...restManual} = testSchemaShapedManual;
 
     const { state, ...restAddr } = address;
     const { state: sM, ...restAddrM } = addr;
@@ -1232,6 +1328,7 @@ if (Meteor.isServer) {
     test.equal(minMaxString.condition.toString(), mMS.condition.toString());
     test.equal(minString.condition.toString(), mnS.condition.toString());
     test.equal(maxString.condition.toString(), mxS.condition.toString());
+    test.equal(maxStringCustomError.condition.toString(), mxSCE.condition.toString());
     test.equal(minMaxNum.condition.toString(), mmN.condition.toString());
     test.equal(minNum.condition.toString(), mnN.condition.toString());
     test.equal(maxNum.condition.toString(), mxN.condition.toString());
@@ -1271,7 +1368,7 @@ if (Meteor.isServer) {
     test.equal(sBilling.condition.toString(), sBillingM.condition.toString());
   });
 
-   Tinytest.add('condition - regex string', function(test) {
+  Tinytest.add('condition - regex string', function(test) {
     try {
       check(regexDataFail, regexSchema)
     } catch(error) {
@@ -1286,11 +1383,41 @@ if (Meteor.isServer) {
     }
   });
 
+  Tinytest.add('condition - custom error - regex string', function(test) {
+    try {
+      check(regexCustomDataFail, regexCustomSchema)
+    } catch(error) {
+      test.equal(error.details[0].message, 'Must be .com')
+    }
+
+    try {
+      check(regexCustomData, regexCustomSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - min empty string', function(test) {
+    try {
+      check(minEmptyDataFail, minEmptySchema)
+    } catch(error) {
+      test.equal(error.details[0].message, 'Min string cannot be empty')
+    }
+
+    try {
+      check(minEmptyData, minEmptySchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
   Tinytest.add('condition - min string', function(test) {
     try {
       check(minDataFail, minSchema)
     } catch(error) {
-      test.isTrue(error)
+      test.equal(error.details[0].message, 'Min string must be at least 2 characters')
     }
 
     try {
@@ -1337,6 +1464,27 @@ if (Meteor.isServer) {
     }
   });
 
+  Tinytest.add('condition - custom error - minMax string', function(test) {
+    try {
+      check(minMaxCustomDataFailLow, minMaxCustomSchema)
+    } catch(error) {
+      test.equal(error.details[0].message, 'Too low')
+    }
+
+    try {
+      check(minMaxCustomDataFailHigh, minMaxCustomSchema)
+    } catch(error) {
+      test.equal(error.details[0].message, 'Too high')
+    }
+
+    try {
+      check(minMaxCustomData, minMaxCustomSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
   Tinytest.add('condition - allow string', function(test) {
     try {
       check(allowDataFail, allowSchema)
@@ -1346,6 +1494,21 @@ if (Meteor.isServer) {
 
     try {
       check(allowData, allowSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - custom error - allow string', function(test) {
+    try {
+      check(allowCustomDataFail, allowCustomSchema)
+    } catch(error) {
+      test.equal(error.details[0].message, 'Must be hi or bye')
+    }
+
+    try {
+      check(allowCustomData, allowCustomSchema)
       test.isTrue(true);
     } catch(error) {
       test.isTrue(error = undefined)
@@ -1603,6 +1766,21 @@ if (Meteor.isServer) {
     }
   });
 
+  Tinytest.add('condition - custom error - unique array', function(test) {
+    try {
+      check(uniqueArrCustomDataFail, uniqueArrCustomSchema)
+    } catch(error) {
+      test.equal(error.details[0].message, 'Gotta be unique')
+    }
+
+    try {
+      check(uniqueArrCustomData, uniqueArrCustomSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
   Tinytest.add('condition - allow 2d array', function(test) {
 
     try {
@@ -1619,6 +1797,22 @@ if (Meteor.isServer) {
     }
   });
 
+  Tinytest.add('condition - custom error - allow 2d array', function(test) {
+
+    try {
+      check(allowArrCustomDataFail, allowArrCustomSchema)
+    } catch(error) {
+      test.equal(error.details[0].message, 'Nope')
+    }
+
+    try {
+      check(allowArrCustomData, allowArrCustomSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
   Tinytest.add('condition - allow array of objects', function(test) {
     try {
       check(allowArrOfObjDataFail, allowArrOfObjSchema)
@@ -1628,6 +1822,21 @@ if (Meteor.isServer) {
 
     try {
       check(allowArrOfObjData, allowArrOfObjSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - custom error - allow array of objects', function(test) {
+    try {
+      check(allowArrOfObjCustomDataFail, allowArrOfObjCustomSchema)
+    } catch(error) {
+      test.equal(error.details[0].message, 'Negative')
+    }
+
+    try {
+      check(allowArrOfObjCustomData, allowArrOfObjCustomSchema)
       test.isTrue(true);
     } catch(error) {
       test.isTrue(error = undefined)
@@ -1897,15 +2106,16 @@ if (Meteor.isServer) {
     try {
       check(requiredDependentDataFail, requiredDependentSchema)
     } catch(error) {
+      console.error('dependent where', error)
       test.isTrue(error)
-      test.equal(error.details[0].message,`Missing key 'thing'`)
+      test.equal(error.details[0].message,`Thing is required`)
     }
 
     try {
       check(requiredDependentDataFail2, requiredDependentSchema)
     } catch(error) {
       test.isTrue(error)
-      test.isTrue(error.details[0].message.includes('Expected'))
+      test.equal(error.details[0].message, 'Thing must be a string, not boolean')
     }
 
     try {
@@ -1989,6 +2199,7 @@ if (Meteor.isServer) {
         'minMaxString': { 'bsonType': 'string', 'minLength': 0, 'maxLength': 20 },
         'minString': { 'bsonType': 'string', 'minLength': 2 },
         'maxString': { 'bsonType': 'string', 'maxLength': 5 },
+        'maxStringCustomError': { 'bsonType': 'string', 'maxLength': 5 },
         'minMaxNum': { 'bsonType': 'double', 'minimum': 2.5, 'maximum': 15.5 },
         'minNum': {'bsonType': 'double', 'minimum': 2.5},
         'maxNum': {'bsonType': 'double', 'maximum': 30.2},
@@ -2027,14 +2238,14 @@ if (Meteor.isServer) {
         },
        'arrayOfInts': { 'bsonType': 'array', 'items': { 'bsonType': 'int' } },
        'arrayOfOptionalInts': { 'bsonType': 'array', 'items': { 'bsonType': 'int' }, 'minItems': 0 },
-       'regexString': { 'bsonType': 'string', 'pattern': /.com$/ },
-       'optionalRegexString': { 'bsonType': 'string', 'pattern': /.com$/ },
-       'optionalRegexStringVariant': { 'bsonType': 'string', 'pattern': /.com$/ },
-       'arrayOfRegexStrings': { 'bsonType': 'array', 'items': { 'bsonType': 'string', 'pattern': /.com$/ } },
+       'regexString': { 'bsonType': 'string', 'pattern': '/.com$/' },
+       'optionalRegexString': { 'bsonType': 'string', 'pattern': '/.com$/' },
+       'optionalRegexStringVariant': { 'bsonType': 'string', 'pattern': '/.com$/' },
+       'arrayOfRegexStrings': { 'bsonType': 'array', 'items': { 'bsonType': 'string', 'pattern': '/.com$/' } },
        'arrayOfOptionalMinMaxNum': { 'bsonType': 'array', 'items': { 'bsonType': 'double', 'minimum': 1, 'maximum': 4 }, 'minItems': 0 },
        'optionalArrayOfMinMaxInt': { 'bsonType': 'array', 'items': { 'bsonType': 'int', 'minimum': 200, 'maximum': 300 } },
        'minMaxArray': { 'bsonType': 'array', 'items': { 'bsonType': 'string' }, 'minItems': 1, 'maxItems': 3 },
-       'arrayOfRegexStringsWithArrayMinMax': { 'bsonType': 'array', 'items': { 'bsonType': 'string', 'pattern': /com$/ }, 'minItems': 1, 'maxItems': 2 },
+       'arrayOfRegexStringsWithArrayMinMax': { 'bsonType': 'array', 'items': { 'bsonType': 'string', 'pattern': '/com$/' }, 'minItems': 1, 'maxItems': 2 },
        'anyOf': {'anyOf': [{ 'bsonType': 'array', 'items': { 'bsonType': 'string' } }, { 'bsonType': 'array', 'items': { 'bsonType': 'date' } }]},
        'arrayAnyOf': { 'bsonType': 'array', 'items': {'anyOf': [{'bsonType': 'string'}, {'bsonType': 'double'}]}},
        'any': {},
@@ -2047,6 +2258,7 @@ if (Meteor.isServer) {
        'num',         'stuff',
        'int',         'minMaxString',
        'minString',   'maxString',
+       'maxStringCustomError',
        'minMaxNum',   'minNum',
        'maxNum',      'minMaxInt',
        'minInt',      'maxInt',

@@ -7,8 +7,10 @@ export const pick = (obj, keys) => {
   return result;
 };
 
-export const isObject = o => o?.constructor === Object;
+export const isObject = o => o && o.constructor === Object;
 export const isEmpty = obj => [Object, Array].includes((obj || {}).constructor) && !Object.entries((obj || {})).length;
+
+export const capitalize = str => str[0].toUpperCase() + (str.toLowerCase()).slice(1);
 
 // Deep equal comparison for objects and arrays. Can also be used for strings, numbers, etc.
 export const isEqual = (first, second) => {

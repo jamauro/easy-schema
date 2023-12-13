@@ -1,6 +1,6 @@
 import { check as c } from 'meteor/check';
 import { Any, Optional, Integer, AnyOf, shape, hasOperators, ss, REQUIRED, enforce } from './shared';
-import { isObject, pick } from './utils';
+import { isObject, pick, capitalize } from './utils';
 import { ValidationError } from 'meteor/mdg:validation-error';
 
 const configure = options => {
@@ -9,7 +9,7 @@ const configure = options => {
   });
 
   return Object.assign(ss, options);
-}
+};
 
 Mongo.Collection.prototype.attachSchema = async function(schema = undefined) {
   const schemaToAttach = schema ? schema : (await import(`${ss.basePath}/${this._name}/schema.js`)).schema;
@@ -21,11 +21,11 @@ Mongo.Collection.prototype.attachSchema = async function(schema = undefined) {
   return;
 };
 
-const skipAutoCheck = () => { }; // no-op on the client side. this is here to support isomorphic code inside Meteor Methods.
+const skipAutoCheck = () => {}; // no-op on the client side. this is here to support isomorphic code inside Meteor Methods.
 
 const check = (data, schema) => { // full check only happens on the server so it's not an argument here
   if (data && hasOperators(data)) { // check on the client doesn't validate update operators to reduce bundle size and since it shouldn't be necessary. update operators are checked on the server.
-    return true;
+    return;
   }
 
   // schema passed in can be customized instead of using the one on the collection.
@@ -38,13 +38,15 @@ const check = (data, schema) => { // full check only happens on the server so it
     const $rules = schema['$rules'];
     $rules && enforce(data, $rules);
 
-    return true;
-  } catch ({ path: name, message: m }) {
-    const formattedMessage = m && m.includes('Match.Where') ? `${name} failed condition` : `${m.replace(/\b(Match error:|Error:)\s*/g, '')}`
-    const message = formattedMessage === REQUIRED ? `${REQUIRED} '${name}'` : formattedMessage;
-    const type = m && m.includes('Expected') ? 'type' : 'condition';
+  } catch ({ path, message: m }) {
+    const type = m.includes('Missing key') ? 'required' : m.includes('Expected') ? 'type' : 'condition';
+    const matches = type === 'type' && (m.match(/Expected (.+), got (.+) in/) || m.match(/Expected (.+) in/));
+    const errorMessage = type === 'required' ? 'is required' : matches ? `must be a ${matches[1]}${matches[2] ? `, not ${matches[2]}` : ''}` : m.replace(/\b(Match error:|w:|in field\s\S*)/g, '').trim();
+    const splitPath = path.split('.');
+    const name = splitPath.pop();
+    const message = (type !== 'condition' || !m.includes('w:')) ? `${capitalize(name.replace(/([A-Z])/g, ' $1'))} ${errorMessage}` : errorMessage;
 
-    throw new ValidationError([{ name, type, message }]);
+    throw new ValidationError([{ name, type, message, ...(splitPath.length > 1 && {path}) }]);
   }
 };
 

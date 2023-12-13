@@ -39,7 +39,7 @@ const validate = ({x, type, min, max, regex, allow, unique, where, additionalPro
         } else {
           const matches = Match.test(v, type[k]);
           if (!matches) {
-            throw `Expected ${type[k].name.toLowerCase()}, got ${typeof v} in property ${k}`
+            throw `Expected ${type[k].name.toLowerCase()}, got ${typeof v} in field ${k}`
           }
         }
       }
@@ -68,39 +68,50 @@ const validate = ({x, type, min, max, regex, allow, unique, where, additionalPro
     const isAnArray = type => isArray(type) || type === Array;
     const isAnObject = type => isObject(type) || type === Object;
 
-    let pass;
+    if (where) {
+      try {
+        where(x, {min, max, regex, allow, unique});
+      } catch(error) {
+        throw `w: ${error}`
+      }
+    }
 
     if (min || max) {
       const count = isAnObject(type) ? Object.keys(x).length : (type === String || isAnArray(type)) ? x.length : x;
-      const descriptor = isAnObject(type) ? `properties` : type === String ? `characters` : isAnArray(type) ? `items` : '';
+      const term = isAnObject(type) ? `properties` : type === String ? `characters` : isAnArray(type) ? `items` : '';
 
-      pass = (min && max) ? count >= min && count <= max : (!min && !max || (min && count >= min) || (max && count <= max));
-      if (!pass) {
-        throw `must be ${min ? 'at least ' + min + ' ' + descriptor : ''}${min && max ? ' and ' : ''}${max ? 'at most ' + max + ' ' + descriptor : ''}`;
+      const [mn, mnErr] = Array.isArray(min) ? min : [min];
+      const [mx, mxErr] = Array.isArray(max) ? max : [max];
+      const minFail = mn && count < mn;
+
+      if (minFail || (mx && count > mx)) {
+        throw minFail && mnErr && `w: ${mnErr}` || mxErr && `w: ${mxErr}` || (count < 1 ? `cannot be empty` : `must be ${min ? 'at least ' + min + ' ' + term : ''}${min && mx ? ' and ' : ''}${max ? 'at most ' + mx + ' ' + term : ''}`);
       }
     }
 
     if (allow) {
-      pass = (isAnObject(type) || isAnArray(type)) ? allow.some(a => isEqual(a, x)) : allow.includes(x) || allow.map(a => a.toString()).includes(x.toString()); // .toString() handles Decimal case
+      const alwErr = allow.some(Array.isArray) && typeof ([last] = allow.slice(-1))[0] === 'string' ? last : undefined;
+      const alw = alwErr ? allow[0] : allow;
+
+      const pass = (isAnObject(type) || isAnArray(type)) ? alw.some(a => isEqual(a, x)) : alw.includes(x) || alw.map(a => a.toString()).includes(x.toString()); // .toString() handles Decimal case
       if (!pass) {
-        throw `${JSON.stringify(x)} is not an allowed value`;
+        throw alwErr && `w: ${alwErr}` || `must have an allowed value, not ${JSON.stringify(x)}`;
       }
     }
 
-    if (regex && !regex.test(x)) throw `does not match regex ${regex}`;
+    if (regex) {
+      const [ r, rErr ] = Array.isArray(regex) ? regex : [regex];
+      if (!r.test(x)) throw rErr && `w: ${rErr}` || `must match regex ${r}`;
+    }
 
-    if (unique && new Set(x).size !== x.length) throw 'items must be unique';
-
-    if (where) {
-      pass = where(x);
-      if (pass && pass !== true) {
-        throw 'failed where condition'
-      }
+    if (unique) {
+      const [ u, uErr ] = Array.isArray(unique) ? unique : [unique];
+      if (new Set(x).size !== x.length) throw uErr && `w: ${uErr}` || 'items must be unique'
     }
 
     return true;
   } catch(error) {
-    throw new Match.Error(error);
+    throw new Match.Error(error)
   }
 };
 
@@ -121,7 +132,7 @@ export const enforce = (data, rules) => {
         throw 'failed where condition';
       }
     } catch(error) {
-      throw { path: `${path[path.length-1]}`, message: error }
+      throw { path: path.join('.'), message: `w: ${error}` }
     }
   };
 };
@@ -141,7 +152,7 @@ export const shape = obj => {
       } else if (isObject(value) && value.hasOwnProperty('type')) {
         const { type, ...conditions } = value;
         const { where, ...restConditions } = conditions;
-        const deps = typeof where === 'function' ? getParams(where).filter(n => n !== k) : [];
+        const deps = typeof where === 'function' && where.length === 1 ? getParams(where).filter(n => n !== k) : [];
 
         if (Object.keys(conditions).some(i => !allowed.includes(i))) {
           acc[k] = value;

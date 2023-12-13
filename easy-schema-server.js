@@ -1,7 +1,7 @@
 import { Meteor } from 'meteor/meteor';
 import { Mongo, MongoInternals } from 'meteor/mongo';
 import { Any, Optional, Integer, AnyOf, Where, shape, getValue, allowed, hasOperators, isArray, ss, REQUIRED, getParams, enforce } from './shared';
-import { pick, isObject, isEmpty } from './utils';
+import { pick, isObject, isEmpty, capitalize } from './utils';
 import { ValidationError } from 'meteor/mdg:validation-error';
 import { flatten, unflatten } from 'flat'
 import { check as c } from 'meteor/check';
@@ -61,7 +61,7 @@ const deepPartialify = obj => {
       } else if (isObject(value) && value.hasOwnProperty('type')) {
         const { type, ...conditions } = value;
         const { where, ...restConditions } = conditions;
-        const deps = typeof where === 'function' ? getParams(where).filter(n => n !== k) : [];
+        const deps = typeof where === 'function' && where.length === 1 ? getParams(where).filter(n => n !== k) : [];
 
         if (Object.keys(conditions).some(i => !allowed.includes(i))) {
           acc[k] = Optional(sculpt(value));
@@ -119,23 +119,25 @@ const maxProps = {
 const createQualifiers = ({ type, conditions }) => {
   const qualifiers = {}
   if (conditions.hasOwnProperty('min')) {
-    qualifiers[minProps[type]] = conditions['min'];
+    qualifiers[minProps[type]] = Array.isArray(conditions['min']) ? conditions['min'][0] : conditions['min'];
   }
 
   if (conditions.hasOwnProperty('max')) {
-    qualifiers[maxProps[type]] = conditions['max'];
+    qualifiers[maxProps[type]] = Array.isArray(conditions['max']) ? conditions['max'][0] : conditions['max'];
   }
 
   if (conditions.hasOwnProperty('regex')) {
-    qualifiers['pattern'] = conditions['regex'];
+    qualifiers['pattern'] = (Array.isArray(conditions['regex']) ? conditions['regex'][0] : conditions['regex']).toString();
   }
 
   if (conditions.hasOwnProperty('allow')) {
-    qualifiers['enum'] = conditions['allow'];
+    const allow = conditions['allow'];
+    const alwErr = allow.some(Array.isArray) && typeof ([last] = allow.slice(-1))[0] === 'string' ? last : undefined;
+    qualifiers['enum'] = alwErr ? allow[0] : allow;
   }
 
   if (conditions.hasOwnProperty('unique')) {
-    qualifiers['uniqueItems'] = conditions['unique'];
+    qualifiers['uniqueItems'] = Array.isArray(conditions['unique']) ? conditions['unique'][0] : conditions['unique'];
   }
 
   if (conditions.hasOwnProperty('additionalProperties')) {
@@ -297,25 +299,24 @@ const check = (data, schema, { full = false } = {}) => { // the only reason we d
 
   try {
     c(dataToCheck, schemaToCheck);
-
     $rules && enforce(dataToCheck, $rules)
 
-    return true;
-  } catch (error) {
-    const formattedMessage = error.message?.includes('Match.Where') ? `${error.path} failed condition` : `${error.message.replace(/\b(Match error:|Error:)\s*/g, '')}` // replaceAll is Node 15+ .message?.replaceAll('Match error: ', '')
-    const message = formattedMessage === REQUIRED ? `${REQUIRED} '${error.path}'` : formattedMessage;
-    const type = message.includes('Missing') ? 'required' : message.includes('Expected') ? 'type' : 'condition';
-    const name = error.path || message.split("'")[1];
+  } catch ({path, message: m}) {
+    const type = m.includes('Missing key') ? 'required' : m.includes('Expected') ? 'type' : 'condition';
+    const matches = type === 'type' && (m.match(/Expected (.+), got (.+) in/) || m.match(/Expected (.+) in/));
+    const errorMessage = type === 'required' ? 'is required' : matches ? `must be a ${matches[1]}${matches[2] ?`, not ${matches[2]}` : ''}` : m.replace(/\b(Match error:|w:|in field\s\S*)/g, '').trim();
+    const splitPath = path.split('.');
+    const name = type === 'required' ? m.split("'")[1] : splitPath.pop();
+    const message = (type !== 'condition' || !m.includes('w:')) ? `${capitalize(name.replace(/([A-Z])/g, ' $1'))} ${errorMessage}` : errorMessage;
 
-    throw new ValidationError([{ name, type, message }]);
+    throw new ValidationError([{ name, type, message, ...(splitPath.length > 1 && {path}) }]);
   }
 };
 
 // Wrap DB write operation methods
 // Only run on the server since we're already validating through Meteor methods.
 // This is validation of the data being written before it's inserted / updated / upserted.
-export const isMeteor2 = Meteor.release.split('@')[1].split('.')[0] === '2'; // eventually remove this when Meteor drops *Async post 3.0
-const writeMethods = ['insert', 'update', 'upsert'].map(m => isMeteor2 ? m : `${m}Async`); // eventually this .map when Meteor drops *Async post 3.0
+const writeMethods = ['insert', 'update', 'upsert'].map(m => Meteor.isFibersDisabled ? `${m}Async` : m); // Meteor.isFibersDisabled = true in Meteor 3+, eventually this .map when Meteor drops *Async post 3.0
 Meteor.startup(() => {
   // autoCheck defaults to true but if user configures it to be false, then we don't wrap the write operation methods
   Meteor.isServer && config.autoCheck && writeMethods.forEach(methodName => {
