@@ -1,13 +1,12 @@
 import { Meteor } from 'meteor/meteor';
 import { Mongo, MongoInternals } from 'meteor/mongo';
-import { Any, Optional, Integer, AnyOf, Where, shape, getValue, allowed, hasOperators, isArray, ss, REQUIRED, getParams, enforce } from './shared';
+import { Any, Optional, Integer, AnyOf, Where, shape, shaped, getValue, allowed, hasOperators, isArray, REQUIRED, getParams, enforce } from './shared';
 import { pick, isObject, isEmpty, capitalize } from './utils';
 import { ValidationError } from 'meteor/mdg:validation-error';
 import { flatten, unflatten } from 'flat'
 import { check as c } from 'meteor/check';
 
 const config = {
-  ...ss,
   autoCheck: true,
   autoAttachJSONSchema: true,
   validationAction: 'error',
@@ -29,7 +28,6 @@ const typeMap = {
 
 const configure = options => {
   c(options, {
-    basePath: Match.Maybe(String),
     autoCheck: Match.Maybe(Boolean),
     autoAttachJSONSchema: Match.Maybe(Boolean),
     validationAction: Match.Maybe(String),
@@ -228,17 +226,8 @@ const addSchema = async (name, schema) => {
   });
 };
 
-Mongo.Collection.prototype.attachSchema = async function(schema = undefined) {
+const attachMongoSchema = async (collection, schema) => {
   try {
-    const schemaToAttach = schema ? schema : (require(`${config.basePath}/${this._name}/schema.js`)).schema;
-    if (!schemaToAttach) {
-      throw new Error('No schema found');
-    }
-
-    const collection = this;
-    collection.schema = { ...shape(schemaToAttach), '$id': `/${collection._name}` };
-    collection._schemaDeepPartial = deepPartialify({ ...schemaToAttach, '$id': `/${collection._name}` });
-
     if (!config.autoAttachJSONSchema) { // optional setting that allows user to not attach a JSONSchema to the collection in the db
       return;
     }
@@ -252,9 +241,27 @@ Mongo.Collection.prototype.attachSchema = async function(schema = undefined) {
       await collection.removeAsync({ _id: 'setup schema' });
     }
 
-    const mongoJSONSchema = createJSONSchema(schemaToAttach);
+    const mongoJSONSchema = createJSONSchema(schema);
 
     return addSchema(`${collection._name}`, mongoJSONSchema);
+  } catch(error) {
+    console.error(error)
+  }
+}
+
+Mongo.Collection.prototype.attachSchema = function(schema) {
+  try {
+    if (!schema) {
+      throw new Error('You must pass in a schema');
+    }
+
+    const collection = this;
+    collection.schema = { ...shape(schema), '$id': `/${collection._name}` };
+    collection._schemaDeepPartial = deepPartialify({ ...schema, '$id': `/${collection._name}` });
+
+    attachMongoSchema(collection, schema);
+
+    return;
   } catch(error) {
     console.error(error)
   }
@@ -289,13 +296,13 @@ const check = (data, schema, { full = false } = {}) => { // the only reason we d
 
   const schemaIsObject = isObject(schema);
   const { $id, ...schemaRest } = schemaIsObject ? schema : {}; // we don't need to check $id, so we remove it
-  const { $rules, ...shapedSchema } = schemaIsObject ? (schema['$id'] ? schemaRest : dataHasOperators ? deepPartialify(schema) : shape(schema)) : {}; // if we have an $id, then we've already shaped / deepPartialified as needed so we don't need to do it again, otherwise a custom schema has been passed in and it needs to be shaped / deepPartialified
+  const { $rules, ...shapedSchema } = schemaIsObject ? ((schema['$id'] || schema[shaped]) ? schemaRest : dataHasOperators ? deepPartialify(schema) : shape(schema)) : {}; // if we have an $id, then we've already shaped / deepPartialified as needed so we don't need to do it again, otherwise a custom schema has been passed in and it needs to be shaped / deepPartialified
 
   if (full) {
     delete shapedSchema._id // we won't have an _id when doing an insert with full, so we remove it from the schema
   }
 
-  const schemaToCheck = schemaIsObject ? ((dataHasOperators || full) ? shapedSchema : pick(shapedSchema, Object.keys(dataToCheck))) : schema; // basically we only want to pick when necessary, e.g. on the initial check with the args passed in from the client to the server
+  const schemaToCheck = schemaIsObject ? ((dataHasOperators || full) ? shapedSchema : pick(shapedSchema, Object.keys(dataToCheck))) : schema; // schemaIsObject ? ((dataHasOperators || full) ? shapedSchema : pick(shapedSchema, Object.keys(dataToCheck))) : schema; // basically we only want to pick when necessary, e.g. on the initial check with the args passed in from the client to the server
 
   try {
     c(dataToCheck, schemaToCheck);
@@ -307,7 +314,7 @@ const check = (data, schema, { full = false } = {}) => { // the only reason we d
     const errorMessage = type === 'required' ? 'is required' : matches ? `must be a ${matches[1]}${matches[2] ?`, not ${matches[2]}` : ''}` : m.replace(/\b(Match error:|w:|in field\s\S*)/g, '').trim();
     const splitPath = path.split('.');
     const name = type === 'required' ? m.split("'")[1] : splitPath.pop();
-    const message = (type !== 'condition' || !m.includes('w:')) ? `${capitalize(name.replace(/([A-Z])/g, ' $1'))} ${errorMessage}` : errorMessage;
+    const message = (name && (type !== 'condition' || !m.includes('w:'))) ? `${capitalize(name.replace(/([A-Z])/g, ' $1'))} ${errorMessage}` : errorMessage;
 
     throw new ValidationError([{ name, type, message, ...(splitPath.length > 1 && {path}) }]);
   }
@@ -357,4 +364,4 @@ Meteor.startup(() => {
 });
 
 const EasySchema = { config, configure, skipAutoCheck, REQUIRED }
-export { Integer, Any, Optional, AnyOf, check, createJSONSchema, EasySchema };
+export { Integer, Any, Optional, AnyOf, check, shape, createJSONSchema, EasySchema };

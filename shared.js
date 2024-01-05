@@ -1,10 +1,6 @@
 import { check as c, Match } from 'meteor/check';
 import { pick, isObject, isEmpty, isEqual } from './utils';
 
-export const ss = { // sharedSettings
-  basePath: '/imports/api'
-}
-
 export const REQUIRED = 'Missing key';
 export const Integer = Match.Integer; // Matches only signed 32-bit integers
 export const Any = Match.Any;
@@ -13,6 +9,7 @@ export const AnyOf = (...args) => Match.OneOf(...args); // Match.OneOf is equiva
 export const Where = ({type, ...conditions}) => Match.Where(x => validate({x, type, ...conditions})); // exported for testing only
 export const allowed = ['min', 'max', 'regex', 'allow', 'unique', 'where', 'additionalProperties'];
 export const isArray = a => Array.isArray(a) && (a !== Integer) && (a !== Any); // Match.Integer is technically modeled as an array so we need to make sure it's not an Integer
+export const shaped = Symbol('shaped');
 
 export const getValue = v => { // unwraps optional values or just returns the value
   const { constructor: { name } } = v || {};
@@ -186,5 +183,6 @@ export const shape = obj => {
 
   const result = sculpt(obj);
   rules.length && (result.$rules = rules);
+  Object.defineProperty(result, shaped, {value: true});
   return result;
 };

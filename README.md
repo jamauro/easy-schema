@@ -411,36 +411,6 @@ EasySchema.configure({
 });
 ```
 
-### Dynamically import schema (optional)
-You can also dynamically import your schemas to reduce the initial bundle size on the client.
-
-First you'll need to create your schema inside its own `schema.js` and put it inside its collection's folder, e.g. `/imports/api/todos/schema.js`
-
-Then you'll need to add a file to your project's root, e.g. `register-dynamic-imports.js` and import this file on both the client and the server near the top of its `mainModule`. Here's an example of the file:
-
-```js
-// In order for the dynamic import to work properly, Meteor needs to know these paths exist. We do that by declaring them statically inside a if (false) block
-Meteor.startup(async () => {
-  if (false) {
-    await import('/imports/api/todos/schema');
-    // add additional schema paths here as well
-  }
-});
-```
-
-Then instead of using `Todos.attachSchema(schema)`, you'd just use `Todos.attachSchema()`
-```js
-// By not passing in a schema explicitly, it will automatically dynamically import the schema and then attach it
-Todos.attachSchema();
-```
-
-This assumes your directory structure is `/imports/api/{collection}/schema.js`. If you have a different structure, e.g. `/api/todos/schema.js`, you can configure the base path with:
-```js
-EasySchema.configure({
-  basePath: `/api`
-});
-```
-
 ## Unsupported
 
 **Auto Check for bulk writes**
