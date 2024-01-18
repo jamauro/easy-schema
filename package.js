@@ -16,7 +16,7 @@ Package.onUse(function(api) {
   api.use('check');
   api.use('ecmascript');
   api.use('mdg:validation-error@0.5.1');
-  api.use('zodern:types');
+  api.use('zodern:types@1.0.11');
   api.addAssets('easy-schema.d.ts', 'server');
   api.mainModule('easy-schema-client.js', 'client');
   api.mainModule('easy-schema-server.js', 'server');
