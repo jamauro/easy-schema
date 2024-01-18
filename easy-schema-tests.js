@@ -1,7 +1,7 @@
 import { Tinytest } from 'meteor/tinytest';
 import { Mongo } from 'meteor/mongo';
 import { createJSONSchema, Integer, Any, Optional, AnyOf, check, EasySchema } from 'meteor/jam:easy-schema';
-import { shape, Where, getParams } from './shared.js';
+import { shape, Where, _getParams } from './shared.js';
 import { isEqual } from './utils.js';
 import { Decimal } from 'meteor/mongo-decimal';
 import { check as c, Match } from 'meteor/check';
@@ -2415,14 +2415,14 @@ if (Meteor.isServer) {
     const fn6 = function({text, checked}) { if (text !== 'stuff') throw 'text must be "stuff"'}
     const fn7 = function({text, checked, thing}) { if (text !== 'stuff') throw 'text must be "stuff"'}
 
-    test.equal(getParams(fn), [])
-    test.equal(getParams(fn1), ['text'])
-    test.equal(getParams(fn2), ['text', 'checked'])
-    test.equal(getParams(fn3), ['checked', 'text'])
-    test.equal(getParams(fn4), ['text', 'checked', 'thing'])
-    test.equal(getParams(fn5), [])
-    test.equal(getParams(fn6), ['text', 'checked'])
-    test.equal(getParams(fn7), ['text', 'checked', 'thing'])
+    test.equal(_getParams(fn), [])
+    test.equal(_getParams(fn1), ['text'])
+    test.equal(_getParams(fn2), ['text', 'checked'])
+    test.equal(_getParams(fn3), ['checked', 'text'])
+    test.equal(_getParams(fn4), ['text', 'checked', 'thing'])
+    test.equal(_getParams(fn5), [])
+    test.equal(_getParams(fn6), ['text', 'checked'])
+    test.equal(_getParams(fn7), ['text', 'checked', 'thing'])
   });
 
 }

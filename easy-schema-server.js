@@ -1,6 +1,6 @@
 import { Meteor } from 'meteor/meteor';
 import { Mongo, MongoInternals } from 'meteor/mongo';
-import { Any, Optional, Integer, AnyOf, Where, shape, shaped, getValue, allowed, hasOperators, isArray, REQUIRED, getParams, enforce } from './shared';
+import { Any, Optional, Integer, AnyOf, Where, shape, _shaped, getValue, allowed, hasOperators, isArray, REQUIRED, _getParams, enforce } from './shared';
 import { pick, isObject, isEmpty, capitalize } from './utils';
 import { ValidationError } from 'meteor/mdg:validation-error';
 import { flatten, unflatten } from 'flat'
@@ -26,6 +26,19 @@ const typeMap = {
   // BigInt: 'long' // untested, commenting out for now. also the team that works on the mongo node driver is working on some things around this so let's wait to see what they do. https://jira.mongodb.org/browse/NODE-3126
 };
 
+/**
+ * Configures the settings for EasySchema.
+ *
+ * @param {{
+ *   autoCheck: (boolean|undefined),
+ *   autoAttachJSONSchema: (boolean|undefined),
+ *   validationAction: (string|undefined),
+ *   validationLevel: (string|undefined),
+ *   additionalBsonTypes: (Object|undefined)
+ * }} options - Configuration options.
+ *
+ * @returns {Object} - The updated configuration object.
+ */
 const configure = options => {
   c(options, {
     autoCheck: Match.Maybe(Boolean),
@@ -59,7 +72,7 @@ const deepPartialify = obj => {
       } else if (isObject(value) && value.hasOwnProperty('type')) {
         const { type, ...conditions } = value;
         const { where, ...restConditions } = conditions;
-        const deps = typeof where === 'function' && where.length === 1 ? getParams(where).filter(n => n !== k) : [];
+        const deps = typeof where === 'function' && where.length === 1 ? _getParams(where).filter(n => n !== k) : [];
 
         if (Object.keys(conditions).some(i => !allowed.includes(i))) {
           acc[k] = Optional(sculpt(value));
@@ -244,11 +257,16 @@ const attachMongoSchema = async (collection, schema) => {
     const mongoJSONSchema = createJSONSchema(schema);
 
     return addSchema(`${collection._name}`, mongoJSONSchema);
-  } catch(error) {
+  } catch (error) {
     console.error(error)
   }
 }
 
+/**
+ * @summary Attach a schema to a collection
+ *
+ * @param {Object} schema The schema to attach
+ */
 Mongo.Collection.prototype.attachSchema = function(schema) {
   try {
     if (!schema) {
@@ -256,13 +274,17 @@ Mongo.Collection.prototype.attachSchema = function(schema) {
     }
 
     const collection = this;
-    collection.schema = { ...shape(schema), '$id': `/${collection._name}` };
-    collection._schemaDeepPartial = deepPartialify({ ...schema, '$id': `/${collection._name}` });
+
+    /** @type {import('meteor/check').Match.Pattern} */
+    collection.schema = Object.assign(shape(schema), { '$id': `/${collection._name}` });
+
+    /** @type {import('meteor/check').Match.Pattern} */
+    collection._schemaDeepPartial = deepPartialify(collection.schema);
 
     attachMongoSchema(collection, schema);
 
     return;
-  } catch(error) {
+  } catch (error) {
     console.error(error)
   }
 };
@@ -289,6 +311,13 @@ const transformModifier = modifier => flatten(Object.entries(modifier).reduce((a
   return { ...acc, ...transformObject(v, isArrayOperator, isCurrentDateOperator, isBitOperator) }
 }, {}), { safe: true }); // safe: true preserves arrays when using flatten
 
+/**
+ * @summary Check that data matches a [schema](#matchpatterns).
+ * If the data does not match the schema, throw a `Validation Error`.
+ *
+ * @param {Any} data The data to check
+ * @param {MatchPattern} schema The schema to match `data` against
+ */
 const check = (data, schema, { full = false } = {}) => { // the only reason we don't have this in shared is to reduce bundle size on the client
   const dataHasOperators = data && hasOperators(data);
   const transformedModifier = dataHasOperators && transformModifier(data);
@@ -296,27 +325,27 @@ const check = (data, schema, { full = false } = {}) => { // the only reason we d
 
   const schemaIsObject = isObject(schema);
   const { $id, ...schemaRest } = schemaIsObject ? schema : {}; // we don't need to check $id, so we remove it
-  const { $rules, ...shapedSchema } = schemaIsObject ? ((schema['$id'] || schema[shaped]) ? schemaRest : dataHasOperators ? deepPartialify(schema) : shape(schema)) : {}; // if we have an $id, then we've already shaped / deepPartialified as needed so we don't need to do it again, otherwise a custom schema has been passed in and it needs to be shaped / deepPartialified
+  const { $rules, ...shapedSchema } = schemaIsObject ? ((schema['$id'] || schema[_shaped]) ? schemaRest : dataHasOperators ? deepPartialify(schema) : shape(schema)) : {}; // if we have an $id, then we've already shaped / deepPartialified as needed so we don't need to do it again, otherwise a custom schema has been passed in and it needs to be shaped / deepPartialified
 
   if (full) {
     delete shapedSchema._id // we won't have an _id when doing an insert with full, so we remove it from the schema
   }
 
-  const schemaToCheck = schemaIsObject ? ((dataHasOperators || full) ? shapedSchema : pick(shapedSchema, Object.keys(dataToCheck))) : schema; // schemaIsObject ? ((dataHasOperators || full) ? shapedSchema : pick(shapedSchema, Object.keys(dataToCheck))) : schema; // basically we only want to pick when necessary, e.g. on the initial check with the args passed in from the client to the server
+  const schemaToCheck = schemaIsObject ? ((dataHasOperators || full || schema[_shaped] && !schema['$id']) ? shapedSchema : pick(shapedSchema, Object.keys(dataToCheck))) : schema; // basically we only want to pick when necessary
 
   try {
     c(dataToCheck, schemaToCheck);
     $rules && enforce(dataToCheck, $rules)
 
-  } catch ({path, message: m}) {
+  } catch ({ path, message: m }) {
     const type = m.includes('Missing key') ? 'required' : m.includes('Expected') ? 'type' : 'condition';
     const matches = type === 'type' && (m.match(/Expected (.+), got (.+) in/) || m.match(/Expected (.+) in/));
-    const errorMessage = type === 'required' ? 'is required' : matches ? `must be a ${matches[1]}${matches[2] ?`, not ${matches[2]}` : ''}` : m.replace(/\b(Match error:|w:|in field\s\S*)/g, '').trim();
+    const errorMessage = type === 'required' ? 'is required' : matches ? `must be a ${matches[1]}${matches[2] ? `, not ${matches[2]}` : ''}` : m.replace(/\b(Match error:|w:|in field\s\S*)/g, '').trim();
     const splitPath = path.split('.');
     const name = type === 'required' ? m.split("'")[1] : splitPath.pop();
     const message = (name && (type !== 'condition' || !m.includes('w:'))) ? `${capitalize(name.replace(/([A-Z])/g, ' $1'))} ${errorMessage}` : errorMessage;
 
-    throw new ValidationError([{ name, type, message, ...(splitPath.length > 1 && {path}) }]);
+    throw new ValidationError([{ name, type, message, ...(splitPath.length > 1 && { path }) }]);
   }
 };
 
@@ -364,4 +393,4 @@ Meteor.startup(() => {
 });
 
 const EasySchema = { config, configure, skipAutoCheck, REQUIRED }
-export { Integer, Any, Optional, AnyOf, check, shape, createJSONSchema, EasySchema };
+export { check, shape, pick, _getParams, createJSONSchema, Any, Optional, Integer, AnyOf, EasySchema }; // createJSONSchema only exported for testing purposes

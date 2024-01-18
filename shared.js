@@ -9,7 +9,7 @@ export const AnyOf = (...args) => Match.OneOf(...args); // Match.OneOf is equiva
 export const Where = ({type, ...conditions}) => Match.Where(x => validate({x, type, ...conditions})); // exported for testing only
 export const allowed = ['min', 'max', 'regex', 'allow', 'unique', 'where', 'additionalProperties'];
 export const isArray = a => Array.isArray(a) && (a !== Integer) && (a !== Any); // Match.Integer is technically modeled as an array so we need to make sure it's not an Integer
-export const shaped = Symbol('shaped');
+export const _shaped = Symbol('_shaped');
 
 export const getValue = v => { // unwraps optional values or just returns the value
   const { constructor: { name } } = v || {};
@@ -112,7 +112,7 @@ const validate = ({x, type, min, max, regex, allow, unique, where, additionalPro
   }
 };
 
-export const getParams = fn => {
+export const _getParams = fn => {
   const match = fn.toString().match(/let\s*\{\s*([^}]*)\s*\}/);
   return match ? match[1].split(',').map(pair => pair.trim().split(':')[0]) : []
 }
@@ -134,6 +134,12 @@ export const enforce = (data, rules) => {
   };
 };
 
+/**
+ * Shapes an object based on a POJO.
+ *
+ * @param {Object} obj - The object to be shaped.
+ * @returns {Object} The shaped object that's ready to use with jam:easy-schema `check`.
+ */
 export const shape = obj => {
   const rules = []; // rules will stores any dependency rules that are found on embedded objects with 'where' functions that destructure a key that is not the current key
 
@@ -149,7 +155,7 @@ export const shape = obj => {
       } else if (isObject(value) && value.hasOwnProperty('type')) {
         const { type, ...conditions } = value;
         const { where, ...restConditions } = conditions;
-        const deps = typeof where === 'function' && where.length === 1 ? getParams(where).filter(n => n !== k) : [];
+        const deps = typeof where === 'function' && where.length === 1 ? _getParams(where).filter(n => n !== k) : [];
 
         if (Object.keys(conditions).some(i => !allowed.includes(i))) {
           acc[k] = value;
@@ -183,6 +189,6 @@ export const shape = obj => {
 
   const result = sculpt(obj);
   rules.length && (result.$rules = rules);
-  Object.defineProperty(result, shaped, {value: true});
+  Object.defineProperty(result, _shaped, {value: true});
   return result;
 };

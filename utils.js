@@ -1,9 +1,19 @@
-// returns a subset of the object, "obj", based on an array of keys passed in
+import { _shaped } from './shared.js';
+
+/**
+ * Creates a new object composed of the specified keys and their corresponding values from the given object.
+ *
+ * @param {Object} obj - The source object from which to pick keys.
+ * @param {string[]} keys - An array of keys to pick from the source object.
+ * @returns {Object} - A new object containing only the specified keys and their values.
+ */
 export const pick = (obj, keys) => {
   const result = {};
   for (const key of keys) {
     if (obj[key]) result[key] = obj[key];
   }
+
+  obj[_shaped] && Object.defineProperty(result, _shaped, { value: obj[_shaped] });
   return result;
 };
 
