@@ -13,7 +13,9 @@ Then, right before the insert / update / upsert to the database, a validation wi
 ## Usage
 
 ### Add the package to your app
-`meteor add jam:easy-schema`
+`meteor add jam:easy-schema@1.3.0-alpha300.19`
+
+`Note`: The specific version number `@1.3.0-alpha300.19` must be specified as above at this time. It's there for Meteor 3.0 compatibility reasons since 3.0 is in a pre-release state. Once there is a Meteor 3.0 RC, the specific version will not be required.
 
 ### Define a schema and attach it to its Collection
 ```js
