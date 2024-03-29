@@ -1,6 +1,6 @@
 # Easy Schema
 
-Easy Schema is an easy way to add schema validation for Meteor apps. It extends the functionality provided by Meteor's [check](https://docs.meteor.com/api/check.html) to validate arguments passed to Meteor Methods and validates automatically on the server prior to write operations `insert / update / upsert`. It also automatically generates a [JSON Schema](https://www.mongodb.com/docs/manual/core/schema-validation/specify-json-schema/#std-label-schema-validation-json) and attaches it to the database's Collection. It's meant to be lightweight and fast. By default, it validates automatically but it is configurable.
+Easy Schema is an easy way to add schema validation for Meteor apps. It extends the functionality provided by Meteor's [check](https://docs.meteor.com/api/check.html) to validate arguments passed to Meteor Methods and validates automatically on the server prior to write operations `insert / update / upsert`. It also automatically generates a [MongoDB JSON Schema](https://www.mongodb.com/docs/manual/core/schema-validation/specify-json-schema/#std-label-schema-validation-json) and attaches it to the database's Collection. It's meant to be lightweight and fast. By default, it validates automatically but it is configurable.
 
 This package can be used with [jam:method](https://github.com/jamauro/method), [Meteor.methods](https://docs.meteor.com/api/methods.html), [Validated Method](https://github.com/meteor/validated-method), or any other package that includes a way to validate the method via a function. It also has built-in support for [Validation Error](https://github.com/meteor/validation-error) for friendlier error messages.
 
@@ -13,9 +13,9 @@ Then, right before the insert / update / upsert to the database, a validation wi
 ## Usage
 
 ### Add the package to your app
-`meteor add jam:easy-schema@1.3.0-alpha300.19`
+`meteor add jam:easy-schema@1.3.1-alpha300.19`
 
-`Note`: The specific version number `@1.3.0-alpha300.19` must be specified as above at this time. It's there for Meteor 3.0 compatibility reasons since 3.0 is in a pre-release state. Once there is a Meteor 3.0 RC, the specific version will not be required.
+`Note`: The specific version number `@1.3.1-alpha300.19` must be specified as above at this time. It's there for Meteor 3.0 compatibility reasons since 3.0 is in a pre-release state. Once there is a Meteor 3.0 RC, the specific version will not be required.
 
 ### Define a schema and attach it to its Collection
 ```js

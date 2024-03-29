@@ -35,7 +35,7 @@ const check = (data, schema) => { // full check only happens on the server so it
 
   // schema passed in can be customized instead of using the one on the collection.
   // if it it's already been shaped, then we don't need to do that again but otherwise we do so that {type: } and conditions are converted properly
-  const schemaToCheck = isObject(schema) ? (schema[_shaped] ? (schema['$id'] ? pick(schema, Object.keys(data)) : schema) : shape(schema)) : schema; // isObject(schema) ? (schema['$id'] ? pick(schema, Object.keys(data)) : (schema[shaped] ? schema : shape(schema))) : schema;
+  const schemaToCheck = isObject(schema) ? (schema[_shaped] ? (schema['$id'] ? pick(schema, Object.keys(data)) : schema) : shape(schema)) : schema;
 
   try {
     c(data, schemaToCheck);

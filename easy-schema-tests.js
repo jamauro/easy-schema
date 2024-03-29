@@ -101,6 +101,55 @@ const testSchemaShapedManual = {
   }}]
 };
 
+const testSchemaShapedOptionalManual = {
+  _id: Optional(String),
+  text: Optional(String),
+  emails: Optional([Optional(String)]),
+  createdAt: Optional(Date),
+  bool: Optional(Boolean),
+  num: Optional(Number),
+  stuff: Optional(Object),
+  int: Optional(Integer),
+  minMaxString: Optional(Where({type: String, min: 0, max: 20})),
+  minString: Optional(Where({type: String, min: 2})),
+  maxString: Optional(Where({type: String, max: 5})),
+  maxStringCustomError: Optional(Where({type: String, max: [5, 'Too long']})),
+  minMaxNum: Optional(Where({type: Number, min: 2.5, max: 15.5})),
+  minNum: Optional(Where({type: Number, min: 2.5})),
+  maxNum: Optional(Where({type: Number, max: 30.2})),
+  minMaxInt: Optional(Where({type: Integer, min: 4, max: 12})),
+  minInt: Optional(Where({type: Integer, min: 10})),
+  maxInt: Optional(Where({type: Integer, max: 1000})),
+  address: Optional({
+    street_address: Optional(String),
+    city: Optional(String),
+    state: Optional(Where({type: String, min: 0, max: 2})),
+  }),
+  people: Optional([
+    Optional(Where({type: Optional({name: Optional(String), age: Optional(Number), arrayOfOptionalBooleans: Optional([Optional(Boolean)])}), additionalProperties: true}))
+  ]),
+  optionalArray: Optional([Optional(String)]),
+  optionalObject: Optional({thing: Optional(String), optionalString: Optional(String)}),
+  arrayOfInts: Optional([Optional(Integer)]),
+  arrayOfOptionalInts: Optional([Optional(Integer)]),
+  regexString: Optional(Where({type: String, regex: /.com$/})),
+  optionalRegexString: Optional(Where({type: String, regex: /.com$/})),
+  optionalRegexStringVariant: Optional(Where({type: String, regex: /.com$/})),
+  arrayOfRegexStrings: Optional([Optional(Where({type: String, regex: /.com$/}))]),
+  arrayOfOptionalMinMaxNum: Optional([Optional(Where({type: Number, min: 1, max: 40}))]),
+  optionalArrayOfMinMaxInt: Optional([Optional(Where({type: Integer, min: 200, max: 300}))]),
+  minMaxArray: Optional(Where({type: [String], min: 1, max: 3})),
+  arrayOfRegexStringsWithArrayMinMax: Optional(Where({type: [String], regex: /.com$/, min: 1, max: 2})),
+  anyOf: Optional(AnyOf(Optional([Optional(String)]), Optional([Optional(Date)]))),
+  arrayAnyOf: Optional([Optional(AnyOf(Optional(String), Optional(Number)))]),
+  any: Optional(Any),
+  simpleWhere: Optional(Where({type: String, where: value => value === 'simple'})),
+  dependWhere: Optional(Where({type: String})),
+  $rules: [{path: ['dependWhere'], deps: ['text'], rule: ({text, dependWhere}) => {
+    if (text === 'stuff' && !dependWhere) throw 'nope'
+  }}]
+};
+
 const schemaAsIs = {
   _id: Optional(String),
   text: String,
@@ -172,6 +221,24 @@ const messageSchema = {
   readBy: [{userId: String, timestamp: Date}],
   authorId: String
 }
+
+const typeSchema = {
+  _id: String,
+  address: {
+    type: { something: { type: String, min: 1 }, on: Boolean },
+    street: String,
+    city: String
+  }
+};
+
+const typeSchemaShapedManual = {
+  _id: String,
+  address: {
+    type: { something: Where({type: String, min: 1}), on: Boolean },
+    street: String,
+    city: String
+  }
+};
 
 /*console.log('messageSchema SHAPED');
 console.dir(shape(messageSchema), {depth: null})
@@ -1349,6 +1416,43 @@ if (Meteor.isServer) {
     test.equal($rules[0].rule.toString().includes(`if (text === 'stuff' && !dependWhere) throw 'nope'`), true)
   });
 
+  Tinytest.add('deep optional schema', function(test) {
+    const shapedSchema = shape(testSchema, { optionalize: true });
+
+    const { people, minMaxString, minString, maxString, maxStringCustomError, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, $rules, ...rest} = shapedSchema;
+    const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, maxStringCustomError: mxSCE, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, $rules: r, ...restManual} = testSchemaShapedOptionalManual;
+
+    const { state, ...restAddr } = address.pattern;
+    const { state: sM, ...restAddrM } = addr.pattern;
+
+    test.equal(rest, restManual);
+    test.equal(restAddr, restAddrM);
+    test.equal(people.pattern[0].pattern.condition.toString(), p.pattern[0].pattern.condition.toString());
+    test.equal(state.pattern.condition.toString(), sM.pattern.condition.toString());
+    test.equal(minMaxString.pattern.condition.toString(), mMS.pattern.condition.toString());
+    test.equal(minString.pattern.condition.toString(), mnS.pattern.condition.toString());
+    test.equal(maxString.pattern.condition.toString(), mxS.pattern.condition.toString());
+    test.equal(maxStringCustomError.pattern.condition.toString(), mxSCE.pattern.condition.toString());
+    test.equal(minMaxNum.pattern.condition.toString(), mmN.pattern.condition.toString());
+    test.equal(minNum.pattern.condition.toString(), mnN.pattern.condition.toString());
+    test.equal(maxNum.pattern.condition.toString(), mxN.pattern.condition.toString());
+    test.equal(minMaxInt.pattern.condition.toString(), mmI.pattern.condition.toString());
+    test.equal(minInt.pattern.condition.toString(), mnI.pattern.condition.toString());
+    test.equal(maxInt.pattern.condition.toString(), mxI.pattern.condition.toString());
+    test.equal(regexString.pattern.condition.toString(), rS.pattern.condition.toString());
+    test.equal(optionalRegexString.pattern.condition.toString(), oRS.pattern.condition.toString());
+    test.equal(optionalRegexStringVariant.pattern.condition.toString(), oRSV.pattern.condition.toString());
+    test.equal(arrayOfRegexStrings.pattern[0].pattern.condition.toString(), aRS.pattern[0].pattern.condition.toString());
+    test.equal(arrayOfOptionalMinMaxNum.pattern[0].pattern.condition.toString(), aOMMN.pattern[0].pattern.condition.toString());
+    test.equal(optionalArrayOfMinMaxInt.pattern[0].pattern.condition.toString(), Object.values(oAMMI)[0][0].pattern.condition.toString());
+    test.equal(minMaxArray.pattern.condition.toString(), mmA.pattern.condition.toString());
+    test.equal(arrayOfRegexStringsWithArrayMinMax.pattern.condition.toString(), aRSWAMM.pattern.condition.toString());
+    test.equal(simpleWhere.pattern.condition.toString(), sW.pattern.condition.toString());
+    test.equal(dependWhere.pattern.condition.toString(), dW.pattern.condition.toString());
+    test.equal(JSON.stringify($rules), `[{"path":["dependWhere"],"deps":["text"]}]`)
+    test.equal($rules[0].rule.toString().includes(`if (text === 'stuff' && !dependWhere) throw 'nope'`), true)
+  });
+
   Tinytest.add('handles embedded subschema', function(test) {
     const shapedSchema = shape(personSchema);
 
@@ -1366,6 +1470,15 @@ if (Meteor.isServer) {
     test.equal(state.condition.toString(), sM.condition.toString());
     test.equal(restBillingAddr.pattern, restBillingAddrM.pattern);
     test.equal(sBilling.condition.toString(), sBillingM.condition.toString());
+  });
+
+  Tinytest.add('handles "type:" embedded object', function(test) {
+    const shapedSchema = shape(typeSchema);
+
+    test.equal(shapedSchema._id, typeSchemaShapedManual._id);
+    test.equal(shapedSchema.address.street, typeSchemaShapedManual.address.street);
+    test.equal(shapedSchema.address.city, typeSchemaShapedManual.address.city);
+    test.equal(shapedSchema.address.type.something.condition.toString(), typeSchemaShapedManual.address.type.something.condition.toString());
   });
 
   Tinytest.add('condition - regex string', function(test) {

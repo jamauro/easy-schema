@@ -1,6 +1,6 @@
 Package.describe({
   name: 'jam:easy-schema',
-  version: '1.3.0-alpha300.19',
+  version: '1.3.1-alpha300.19',
   summary: 'An easy way to add schema validation for Meteor apps',
   git: 'https://github.com/jamauro/easy-schema',
   documentation: 'README.md'

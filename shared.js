@@ -138,34 +138,38 @@ export const enforce = (data, rules) => {
  * Shapes an object based on a POJO.
  *
  * @param {Object} obj - The object to be shaped.
+ * @param {Object} [options] - Options object.
+ * @param {boolean} [options.optionalize=false] - If true, marks all properties as optional.
  * @returns {Object} The shaped object that's ready to use with jam:easy-schema `check`.
  */
-export const shape = obj => {
+export const shape = (obj, { optionalize = false } = {}) => {
   const rules = []; // rules will stores any dependency rules that are found on embedded objects with 'where' functions that destructure a key that is not the current key
 
-  const sculpt = (obj, currentPath = [], skip = false) => {
+  const sculpt = (obj, currentPath = [], skip = false, isOptional = false) => {
+    const maybeOptionalize = value => optionalize && !isOptional ? Optional(value) : value; // using isOptional to prevent double wrapping Optional when it's already been made Optional
+
     return Object.entries(obj).reduce((acc, [k, v]) => {
       const path = skip ? currentPath : [...currentPath, k]; // we don't want to add Optional or AnyOf keys – 'pattern', '0' – to the path which we use for $rules so we use skip
       const { value, optional, anyOf } = getValue(v);
 
       if (optional) {
-        acc[k] = Optional(...Object.values(sculpt(v, path, true)));
+        acc[k] = Optional(...Object.values(sculpt(v, path, true, true)));
       } else if (anyOf) {
-        acc[k] = AnyOf(...Object.values(sculpt(value, path, true)));
+        acc[k] = maybeOptionalize(AnyOf(...Object.values(sculpt(value, path, true))));
       } else if (isObject(value) && value.hasOwnProperty('type')) {
         const { type, ...conditions } = value;
         const { where, ...restConditions } = conditions;
         const deps = typeof where === 'function' && where.length === 1 ? _getParams(where).filter(n => n !== k) : [];
 
         if (Object.keys(conditions).some(i => !allowed.includes(i))) {
-          acc[k] = value;
+          acc[k] = maybeOptionalize(sculpt(value, path));
         } else {
           if (isEmpty(conditions)) {
-            acc[k] = type;
+            acc[k] = maybeOptionalize(type);
           } else {
             const { value: tValue, optional: tOptional } = getValue(type);
             const finalConditions = deps.length ? restConditions : conditions;
-            acc[k] = tOptional ? Optional(Where({ type: tValue, ...finalConditions })) : Where({ type, ...finalConditions });
+            acc[k] = tOptional ? Optional(Where({ type: tValue, ...finalConditions })) : maybeOptionalize(Where({ type, ...finalConditions }));
           }
         }
 
@@ -177,11 +181,11 @@ export const shape = obj => {
           });
         }
       } else if (isArray(value)) {
-        acc[k] = isArray(value[0]) ? [Where({ type: value })] : [...Object.values(sculpt(v, path))];
+        acc[k] = maybeOptionalize(isArray(value[0]) ? [Where({ type: value })] : [...Object.values(sculpt(value, path))]);
       } else if (isObject(value)) {
-        acc[k] = sculpt(value, path);
+        acc[k] = maybeOptionalize(sculpt(value, path));
       } else {
-        acc[k] = v;
+        acc[k] = maybeOptionalize(value);
       }
       return acc;
     }, {});

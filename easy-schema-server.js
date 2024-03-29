@@ -57,58 +57,6 @@ const configure = options => {
 
 const skipAutoCheck = () => config.autoCheck = false;
 
-const deepPartialify = obj => {
-  const rules = [];
-
-  const sculpt = (obj, currentPath = [], skip = false) => {
-    return Object.entries(obj).reduce((acc, [k, v]) => {
-      const path = skip ? currentPath : [...currentPath, k]; // we don't want to add Optional or AnyOf keys – 'pattern', '0' – to the path which we use for $rules so we use skip
-      const { value, optional, anyOf } = getValue(v);
-
-      if (optional) {
-        acc[k] = Optional(...Object.values(sculpt(v, path, true)));
-      } else if (anyOf) {
-        acc[k] = Optional(AnyOf(...Object.values(sculpt(value, path, true))));
-      } else if (isObject(value) && value.hasOwnProperty('type')) {
-        const { type, ...conditions } = value;
-        const { where, ...restConditions } = conditions;
-        const deps = typeof where === 'function' && where.length === 1 ? _getParams(where).filter(n => n !== k) : [];
-
-        if (Object.keys(conditions).some(i => !allowed.includes(i))) {
-          acc[k] = Optional(sculpt(value));
-        } else {
-          if (isEmpty(conditions)) {
-            acc[k] = Optional(type);
-          } else {
-            const { value: tValue, optional: tOptional } = getValue(type);
-            const finalConditions = deps.length ? restConditions : conditions;
-            acc[k] = tOptional ? Optional(Where({ type: tValue, ...finalConditions })) : Optional(Where({ type, ...finalConditions }));
-          }
-        }
-
-        if (deps.length) {
-          rules.push({
-            path,
-            rule: where,
-            deps
-          });
-        }
-      } else if (isArray(value)) {
-        acc[k] = isArray(value[0]) ? Optional([Where({ type: value })]) : Optional([...Object.values(sculpt(v, path))]);
-      } else if (isObject(value)) {
-        acc[k] = Optional(sculpt(value, path));
-      } else {
-        acc[k] = Optional(v);
-      }
-      return acc;
-    }, {});
-  };
-
-  const result = sculpt(obj);
-  rules.length && (result.$rules = rules);
-  return result;
-};
-
 const minProps = {
   int: 'minimum',
   decimal: 'minimum',
@@ -279,7 +227,7 @@ Mongo.Collection.prototype.attachSchema = function(schema) {
     collection.schema = Object.assign(shape(schema), { '$id': `/${collection._name}` });
 
     /** @type {import('meteor/check').Match.Pattern} */
-    collection._schemaDeepPartial = deepPartialify(collection.schema);
+    collection._schemaDeepOptional = shape(collection.schema, {optionalize: true});
 
     attachMongoSchema(collection, schema);
 
@@ -325,7 +273,7 @@ const check = (data, schema, { full = false } = {}) => { // the only reason we d
 
   const schemaIsObject = isObject(schema);
   const { $id, ...schemaRest } = schemaIsObject ? schema : {}; // we don't need to check $id, so we remove it
-  const { $rules, ...shapedSchema } = schemaIsObject ? ((schema['$id'] || schema[_shaped]) ? schemaRest : dataHasOperators ? deepPartialify(schema) : shape(schema)) : {}; // if we have an $id, then we've already shaped / deepPartialified as needed so we don't need to do it again, otherwise a custom schema has been passed in and it needs to be shaped / deepPartialified
+  const { $rules, ...shapedSchema } = schemaIsObject ? ((schema['$id'] || schema[_shaped]) ? schemaRest : dataHasOperators ? shape(schema, {optionalize: true}) : shape(schema)) : {}; // if we have an $id, then we've already shaped / deepOptionalized as needed so we don't need to do it again, otherwise a custom schema has been passed in and it needs to be shaped / deepOptionalized
 
   if (full) {
     delete shapedSchema._id // we won't have an _id when doing an insert with full, so we remove it from the schema
@@ -355,11 +303,11 @@ const check = (data, schema, { full = false } = {}) => { // the only reason we d
 const writeMethods = ['insert', 'update', 'upsert'].map(m => Meteor.isFibersDisabled ? `${m}Async` : m); // Meteor.isFibersDisabled = true in Meteor 3+, eventually this .map when Meteor drops *Async post 3.0
 Meteor.startup(() => {
   // autoCheck defaults to true but if user configures it to be false, then we don't wrap the write operation methods
-  Meteor.isServer && config.autoCheck && writeMethods.forEach(methodName => {
+  config.autoCheck && writeMethods.forEach(methodName => {
     const method = Mongo.Collection.prototype[methodName];
     Mongo.Collection.prototype[methodName] = function(...args) {
       const collection = this;
-      const { _name, schema, _schemaDeepPartial } = collection;
+      const { _name, schema, _schemaDeepOptional } = collection;
 
       // autoCheck can also be skipped on a one-off basis per method call, so we check here if that's the case
       if (!config.autoCheck) {
@@ -382,7 +330,7 @@ Meteor.startup(() => {
       }
 
       const data = isUpsert ? { ...args[0], ...args[1] } : isUpdate ? args[1] : args[0];
-      const schemaToCheck = isUpdate ? _schemaDeepPartial : schema;
+      const schemaToCheck = isUpdate ? _schemaDeepOptional : schema;
       const full = !isUpdate; // inserts only
 
       check(data, schemaToCheck, { full });

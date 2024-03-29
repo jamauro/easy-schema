@@ -1,3 +1,6 @@
+## 1.3.1-alpha300.19
+* fix: optimizations to `jam:method` integration
+
 ## 1.3.0-alpha300.19
 * feat: better typescript and code completion support via declaration file (.d.ts)
 * fix: optimizations to `jam:method` integration

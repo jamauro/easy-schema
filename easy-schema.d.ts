@@ -28,9 +28,11 @@ export declare function Optional<T extends Pattern>(
  * Shapes an object based on a POJO.
  *
  * @param {Object} obj - The object to be shaped.
+ * @param {Object} [options] - Options object.
+ * @param {boolean} [options.optionalize=false] - If true, marks all properties as optional.
  * @returns {Object} The shaped object that's ready to use with jam:easy-schema `check`.
  */
-export declare const shape: (obj: Record<string, any>) => Record<string, any>;
+export declare const shape: (obj: Record<string, any>, options?: { optionalize?: boolean }) => Record<string, any>;
 
 /**
  * Creates a new object composed of the specified keys and their corresponding values from the given object.
