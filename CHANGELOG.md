@@ -1,3 +1,7 @@
+## 1.3.1-rc.4
+* fix: bump Meteor 3.0 to latest release candidate version
+* docs: update README to clarify `Optional`
+
 ## 1.3.1-alpha300.19
 * fix: optimizations to `jam:method` integration
 

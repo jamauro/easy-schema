@@ -13,9 +13,9 @@ Then, right before the insert / update / upsert to the database, a validation wi
 ## Usage
 
 ### Add the package to your app
-`meteor add jam:easy-schema@1.3.1-alpha300.19`
+`meteor add jam:easy-schema@1.3.1-rc.4`
 
-`Note`: The specific version number `@1.3.1-alpha300.19` must be specified as above at this time. It's there for Meteor 3.0 compatibility reasons since 3.0 is in a pre-release state. Once there is a Meteor 3.0 RC, the specific version will not be required.
+`Note`: The specific version number `@1.3.1-rc.4` must be specified as above at this time. It's there for Meteor 3.0 compatibility reasons since 3.0 is in a pre-release state. Once Meteor 3.0 is officially released, the specific version will not be required.
 
 ### Define a schema and attach it to its Collection
 ```js
@@ -139,6 +139,21 @@ By default, everything listed in the schema is assumed to be required. For anyth
 optionalArray: Optional([String])
 optionalObject: Optional({thing: String, optionalString: Optional(String)})
 arrayOfOptionalInts: [Optional(Integer)]
+```
+*Note*: If `Optional` is used inside an object and the value of the key is `null` or `undefined`, it will throw a validation error. You can either not send the key value pair if the value is `null` or `undefined` or if you must send a `null` or `undefined` value, you can use `AnyOf(x, null, undefined)` where `x` is the type. This was chosen because `undefined` arguments to Meteor Methods are converted to `null` when sent over the wire.
+
+```js
+// In an object
+const pattern = { name: Optional(String) };
+
+check({ name: 'something' }, pattern); // OK
+check({}, pattern); // OK
+check({ name: undefined }, pattern); // Throws an exception
+check({ name: null }, pattern); // Throws an exception
+
+// Outside an object
+check(null, Optional(String)); // OK
+check(undefined, Optional(String)); // OK
 ```
 
 ### AnyOf
