@@ -1,3 +1,6 @@
+## 1.3.1
+* fix: bump `versionsFrom` to official Meteor 3.0 release
+
 ## 1.3.1-rc.4
 * fix: bump Meteor 3.0 to latest release candidate version
 * docs: update README to clarify `Optional`
