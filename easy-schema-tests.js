@@ -1263,6 +1263,34 @@ if (Meteor.isServer) {
     }
   });
 
+  Tinytest.addAsync('upsert - shorthand _id validates successfully against server', async (test) => {
+    const { _id } = await Things.findOneAsync();
+
+     try {
+      await Things.upsertAsync(_id,
+        {
+          $inc: {int: 11},
+          $setOnInsert: {
+            readBy: [{userId: '2', lastRead: new Date()}, {userId: '3', lastRead: new Date()}],
+            numOrInt: 8,
+            num: 100.1,
+            bool: true,
+            created: new Date(),
+            obj: { different: 'more' },
+            arr: ['1', '2', '3'],
+            arrOfInts: [1, 4, 78],
+            blackbox: {stuff: {lots: 'of', things: 'in', here: [24, 324, 38]}},
+            blackboxArray: ['1', '2', '3'],
+            // decimal: Decimal(12.6999999999)
+          }
+        }
+      )
+      test.isTrue(true)
+    } catch(error) {
+      test.isTrue(error = undefined);
+    }
+  });
+
   Tinytest.add('modifier - set', function(test) {
     try {
       check(setObj, modifierSchema);

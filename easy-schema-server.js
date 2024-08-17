@@ -300,7 +300,7 @@ const check = (data, schema, { full = false } = {}) => { // the only reason we d
 // Wrap DB write operation methods
 // Only run on the server since we're already validating through Meteor methods.
 // This is validation of the data being written before it's inserted / updated / upserted.
-const writeMethods = ['insert', 'update', 'upsert'].map(m => Meteor.isFibersDisabled ? `${m}Async` : m); // Meteor.isFibersDisabled = true in Meteor 3+, eventually this .map when Meteor drops *Async post 3.0
+const writeMethods = ['insert', 'update'].map(m => Meteor.isFibersDisabled ? `${m}Async` : m); // Meteor.isFibersDisabled = true in Meteor 3+, eventually remove this .map when Meteor drops *Async post 3.0. upsert will run through update so we don't need to add it explicitly here.
 Meteor.startup(() => {
   // autoCheck defaults to true but if user configures it to be false, then we don't wrap the write operation methods
   config.autoCheck && writeMethods.forEach(methodName => {
@@ -321,7 +321,7 @@ Meteor.startup(() => {
       }
 
       const isUpdate = ['update', 'updateAsync'].includes(methodName);
-      const isUpsert = ['upsert', 'upsertAsync'].includes(methodName) || (isUpdate && (args[2]?.hasOwnProperty('upsert') || false) && args[2]['upsert']);
+      const isUpsert = isUpdate && (args[2]?.hasOwnProperty('upsert') || false) && args[2]['upsert'];
       const isUserServicesUpdate = isUpdate && _name === 'users' && Object.keys(Object.values(args[1])[0])[0].split('.')[0] === 'services';
 
       // If you do have a Meteor.users schema, then this prevents a check on Meteor.users.services updates that run periodically to resume login tokens and other things that don't need validation
@@ -329,7 +329,7 @@ Meteor.startup(() => {
         return method.apply(collection, args);
       }
 
-      const data = isUpsert ? { ...args[0], ...args[1] } : isUpdate ? args[1] : args[0];
+      const data = isUpsert ? { ...(typeof args[0] === 'string' ? { _id: args[0] } : args[0]), ...args[1] } : isUpdate ? args[1] : args[0]; // the typeof check for upsert allows using the shorthand _id
       const schemaToCheck = isUpdate ? _schemaDeepOptional : schema;
       const full = !isUpdate; // inserts only
 

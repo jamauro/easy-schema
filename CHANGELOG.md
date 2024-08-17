@@ -1,3 +1,7 @@
+## 1.3.2
+* fix: prevent double validation when using `upsertAsync`
+* fix: allow using shorthand `_id` with `upsertAsync`
+
 ## 1.3.1
 * fix: bump `versionsFrom` to official Meteor 3.0 release
 
