@@ -40,17 +40,18 @@ import { createMethod } from 'meteor/jam:method';
 export const insertTodo = createMethod({
   name: 'todos.insert',
   schema: Todos.schema,
-  run({ text }) {
-    const userId = Meteor.userId(); // can use this.userId instead
+  async run({ text }) {
+    const user = await Meteor.userAsync();
+
     const todo = {
       text,
       done: false,
       createdAt: new Date(),
-      authorId: userId,
-      username: Meteor.users.findOne(userId).username
+      authorId: user._id,
+      username: user.username
     }
 
-    const todoId = Todos.insert(todo);
+    const todoId = await Todos.insertAsync(todo);
     return todoId;
   }
 });
@@ -70,21 +71,23 @@ export const insertTodo = new ValidatedMethod({
     // if you want, you can also pass in a custom schema, like this:
     /* check(args, {text: {type: String, min: 1, max: 16}}) */
   },
-  run({ text }) {
+  async run({ text }) {
     const userId = Meteor.userId();
     if (!userId) {
       throw new Meteor.Error('not-authorized');
     }
 
+    const user = await Meteor.userAsync();
+
     const todo = {
       text,
       done: false,
       createdAt: new Date(),
-      authorId: userId,
-      username: Meteor.users.findOne(userId).username
+      authorId: user._id,
+      username: user.username
     }
 
-    const todoId = Todos.insert(todo);
+    const todoId = await Todos.insertAsync(todo);
     return todoId;
   }
 });
@@ -391,7 +394,7 @@ const schema = Todos.schema;
 check(data, schema);
 
 // perform db write operation. here's an example with update.
-Todos.update(_id, data);
+Todos.updateAsync(_id, data);
 ```
 
 If you choose to validate manually, you can force a full check against the entire schema by passing in `{full: true}` to the check function.

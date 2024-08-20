@@ -113,9 +113,14 @@ const validate = ({x, type, min, max, regex, allow, unique, where, additionalPro
 };
 
 export const _getParams = fn => {
-  const match = fn.toString().match(/let\s*\{\s*([^}]*)\s*\}/);
-  return match ? match[1].split(',').map(pair => pair.trim().split(':')[0]) : []
-}
+  const fnString = fn.toString();
+  const match = fnString.match(/let\s*\{\s*([^}]*)\s*\}/);
+  if (match) {
+    return match[1].split(',').map(m => m.trim().split(':')[0]);
+  }
+
+  return Meteor.isClient && Meteor.isDevelopment ? (fnString.match(/\(\s*\{([^}]*)\}\s*\)/)?.[1] || '').split(',').filter(Boolean).map(m => m.trim()) : [...fnString.matchAll(/n\.(\w+)/g)].map(m => m[1]); // vite bundler support
+};
 
 // extract pulls out the nested array or object given a path that's an array of keys
 const extract = (obj, path) => path.reduce((acc, key, i) => (i === path.length - 1 && key === '0') ? Array.isArray(acc) ? acc : Object.values(acc) : acc[key], obj);

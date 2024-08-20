@@ -1075,6 +1075,16 @@ if (Meteor.isServer) {
     }
   });
 
+  Tinytest.addAsync('insert - preset _id validates successfully against server ', async (test) => {
+     try {
+      await Things.removeAsync({});
+      thingId = await Things.insertAsync({...thingData, _id: '1'});
+      test.isTrue(true)
+    } catch(error) {
+      test.isTrue(error = undefined);
+    }
+  });
+
   Tinytest.addAsync('update - $set embedded array of objects with positional $', async (test) => {
      try {
       await Things.updateAsync({'readBy.userId': '3'}, {$set: {'readBy.$.userId': '4', numOrInt: 25}}); //, numOrInt: 14.1, decimal: Decimal(486394763.2)
@@ -1240,6 +1250,34 @@ if (Meteor.isServer) {
   Tinytest.addAsync('upsert - validates successfully against server', async (test) => {
      try {
       await Things.upsertAsync({num: 1.5},
+        {
+          $inc: {int: 11},
+          $setOnInsert: {
+            readBy: [{userId: '2', lastRead: new Date()}, {userId: '3', lastRead: new Date()}],
+            numOrInt: 8,
+            num: 100.1,
+            bool: true,
+            created: new Date(),
+            obj: { different: 'more' },
+            arr: ['1', '2', '3'],
+            arrOfInts: [1, 4, 78],
+            blackbox: {stuff: {lots: 'of', things: 'in', here: [24, 324, 38]}},
+            blackboxArray: ['1', '2', '3'],
+            // decimal: Decimal(12.6999999999)
+          }
+        }
+      )
+      test.isTrue(true)
+    } catch(error) {
+      test.isTrue(error = undefined);
+    }
+  });
+
+  Tinytest.addAsync('upsert - shorthand _id validates successfully against server', async (test) => {
+    const { _id } = await Things.findOneAsync();
+
+     try {
+      await Things.upsertAsync(_id,
         {
           $inc: {int: 11},
           $setOnInsert: {
@@ -2517,25 +2555,24 @@ if (Meteor.isServer) {
     test.isTrue(isEqual(undefined, undefined));
     test.isTrue(isEqual(null, null));
   });
-
-  Tinytest.add('getParams - successfully gets params', function (test) {
-    const fn = text => { if (text !== 'stuff') throw 'text must be "stuff"' }
-    const fn1 = ({text}) => { if (text !== 'stuff') throw 'text must be "stuff"' }
-    const fn2 = ({text, checked}) => { if (text === 'stuff' && !checked) throw 'required' }
-    const fn3 = ({checked, text}) => { if (text === 'stuff' && !checked) throw 'required' }
-    const fn4 = ({text, checked, thing}) => { if (text !== 'stuff') throw 'text must be "stuff"' }
-    const fn5 = function(text) { if (text !== 'stuff') throw 'text must be "stuff"'}
-    const fn6 = function({text, checked}) { if (text !== 'stuff') throw 'text must be "stuff"'}
-    const fn7 = function({text, checked, thing}) { if (text !== 'stuff') throw 'text must be "stuff"'}
-
-    test.equal(_getParams(fn), [])
-    test.equal(_getParams(fn1), ['text'])
-    test.equal(_getParams(fn2), ['text', 'checked'])
-    test.equal(_getParams(fn3), ['checked', 'text'])
-    test.equal(_getParams(fn4), ['text', 'checked', 'thing'])
-    test.equal(_getParams(fn5), [])
-    test.equal(_getParams(fn6), ['text', 'checked'])
-    test.equal(_getParams(fn7), ['text', 'checked', 'thing'])
-  });
-
 }
+
+Tinytest.add('getParams - successfully gets params', function (test) {
+  const fn = text => { if (text !== 'stuff') throw 'text must be "stuff"' }
+  const fn1 = ({text}) => { if (text !== 'stuff') throw 'text must be "stuff"' }
+  const fn2 = ({text, checked}) => { if (text === 'stuff' && !checked) throw 'required' }
+  const fn3 = ({checked, text}) => { if (text === 'stuff' && !checked) throw 'required' }
+  const fn4 = ({text, checked, thing}) => { if (text !== 'stuff') throw 'text must be "stuff"' }
+  const fn5 = function(text) { if (text !== 'stuff') throw 'text must be "stuff"'}
+  const fn6 = function({text, checked}) { if (text !== 'stuff') throw 'text must be "stuff"'}
+  const fn7 = function({text, checked, thing}) { if (text !== 'stuff') throw 'text must be "stuff"'}
+
+  test.equal(_getParams(fn), [])
+  test.equal(_getParams(fn1), ['text'])
+  test.equal(_getParams(fn2), ['text', 'checked'])
+  test.equal(_getParams(fn3), ['checked', 'text'])
+  test.equal(_getParams(fn4), ['text', 'checked', 'thing'])
+  test.equal(_getParams(fn5), [])
+  test.equal(_getParams(fn6), ['text', 'checked'])
+  test.equal(_getParams(fn7), ['text', 'checked', 'thing'])
+});

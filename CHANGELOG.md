@@ -1,3 +1,11 @@
+## 1.3.3
+* fix: `jam:method` integration when using `vite` bundler on the client instead of Meteor's default
+* fix: validate correctly when using a preset `_id`
+
+## 1.3.2
+* fix: prevent double validation when using `upsertAsync`
+* fix: allow using shorthand `_id` with `upsertAsync`
+
 ## 1.3.1
 * fix: bump `versionsFrom` to official Meteor 3.0 release
 
