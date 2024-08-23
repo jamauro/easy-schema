@@ -1,5 +1,5 @@
 ## 1.4.0
-* feat: throw all validation errors to enable a better UX
+* feat: throw all validation errors to enable a better UX (requires Meteor `2.16+`)
 * feat: support `Mongo.ObjectID`
 
 ## 1.3.3
