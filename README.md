@@ -376,7 +376,7 @@ If you're using Mongo `ObjectID`s instead of Meteor's default `_id` generation, 
 ```js
 import { ObjectID } from 'meteor/jam:easy-schema';
 
-const schema {
+const schema = {
   _id: ObjectID,
   // ... rest of your schema //
 }
