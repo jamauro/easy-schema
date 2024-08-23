@@ -1,6 +1,6 @@
 Package.describe({
   name: 'jam:easy-schema',
-  version: '1.3.3',
+  version: '1.4.0',
   summary: 'An easy way to add schema validation for Meteor apps',
   git: 'https://github.com/jamauro/easy-schema',
   documentation: 'README.md'
@@ -15,6 +15,7 @@ Package.onUse(function(api) {
   api.use('mongo');
   api.use('check');
   api.use('ecmascript');
+  api.use('mongo-id');
   api.use('mdg:validation-error@0.5.1');
   api.use('zodern:types@1.0.13');
   api.mainModule('easy-schema-client.js', 'client');

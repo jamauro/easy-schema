@@ -1,3 +1,7 @@
+## 1.4.0
+* feat: throw all validation errors to enable a better UX
+* feat: support `Mongo.ObjectID`
+
 ## 1.3.3
 * fix: `jam:method` integration when using `vite` bundler on the client instead of Meteor's default
 * fix: validate correctly when using a preset `_id`

@@ -1,6 +1,6 @@
 import { Tinytest } from 'meteor/tinytest';
 import { Mongo } from 'meteor/mongo';
-import { createJSONSchema, Integer, Any, Optional, AnyOf, check, EasySchema } from 'meteor/jam:easy-schema';
+import { createJSONSchema, Integer, Any, ObjectID, Optional, AnyOf, check, EasySchema } from 'meteor/jam:easy-schema';
 import { shape, Where, _getParams } from './shared.js';
 import { isEqual } from './utils.js';
 import { Decimal } from 'meteor/mongo-decimal';
@@ -1051,6 +1051,22 @@ const thingData = {
   blackboxArray: [1, 2, 3],
   // decimal: Decimal(9.6560546048)
 }
+
+const Notes = new Mongo.Collection('notes', { idGeneration: 'MONGO' });
+const notesSchema = {
+  _id: ObjectID,
+  text: String,
+  stuff: { type: String, min: 2, where: stuff => { if (stuff !== 'hi') throw 'stuff must be hi' }},
+  something: Optional(String),
+  anotherSomething: {type: Optional(String), where: ({ something, anotherSomething }) => {
+    if (something !== anotherSomething) throw 'somethings must match'
+  }}
+};
+Notes.attachSchema(notesSchema)
+
+const insertNote = async ({ text, stuff }) => Notes.insertAsync({ text, stuff });
+const updateNote = async ({ _id, text, stuff, something, anotherSomething }) => Notes.updateAsync({ _id }, { $set: { stuff, text, something, anotherSomething }});
+Meteor.methods({ insertNote, updateNote });
 
 if (Meteor.isServer) {
   if (!Meteor.isFibersDisabled) { // simple test for Meteor 2.x apps that are in the process of migrating to 3.0
@@ -2212,28 +2228,12 @@ if (Meteor.isServer) {
     }
   });
 
-  Tinytest.add('condition - dependent where', function(test) {
-    try {
-      check(dependentWhereDataFail, dependentWhereSchema)
-    } catch(error) {
-      test.isTrue(error)
-      test.equal(error.details[0].message,`passwords must match`)
-    }
-
-    try {
-      check(dependentWhereData, dependentWhereSchema)
-      test.isTrue(true);
-    } catch(error) {
-      test.isTrue(error = undefined)
-    }
-  });
-
   Tinytest.add('condition - dependent where update', function(test) {
     try {
       check({$set: {password: 'hello123', confirmPassword: 'nope123'}}, dependentWhereSchema)
     } catch(error) {
       test.isTrue(error)
-      test.equal(error.details[0].message,`passwords must match`)
+      test.equal(error.details[0].message,`Passwords must match`)
     }
 
     try {
@@ -2298,7 +2298,7 @@ if (Meteor.isServer) {
       }, nestedSchema)
     } catch(error) {
       test.isTrue(error)
-      test.equal(error.details[0].message,`nope`)
+      test.equal(error.details[0].message,`Nope`)
     }
 
     try {
@@ -2556,6 +2556,44 @@ if (Meteor.isServer) {
     test.isTrue(isEqual(null, null));
   });
 }
+
+Tinytest.add('condition - dependent where', function(test) {
+  try {
+    check(dependentWhereDataFail, dependentWhereSchema)
+  } catch(error) {
+    test.isTrue(error)
+    test.equal(error.details[0].message,`Passwords must match`)
+  }
+
+  try {
+    check(dependentWhereData, dependentWhereSchema)
+    test.isTrue(true);
+  } catch(error) {
+    test.isTrue(error = undefined)
+  }
+});
+
+Tinytest.addAsync('insert - ObjectID validates successfully', async (test) => {
+   try {
+    await Meteor.callAsync('insertNote', { text: 'hi', stuff: 'hi', something: 'sup', anotherSomething: 'sup' });
+    test.isTrue(true)
+  } catch(error) {
+    test.isTrue(error = undefined);
+  }
+});
+
+Tinytest.addAsync('throw all errors - successful', async (test) => {
+  const _id = await Meteor.callAsync('insertNote', { text: 'hi', stuff: 'hi' })
+   try {
+    await Meteor.callAsync('updateNote', { _id, text: 2, stuff: 's', something: 'sup', anotherSomething: 'nope' });
+    test.isTrue(false)
+  } catch(error) {
+    test.equal(error.details.length, 3)
+    test.equal(error.details[0].message, 'Stuff must be hi and must be at least 2 characters')
+    test.equal(error.details[1].message, 'Text must be a string, not number')
+    test.equal(error.details[2].message, 'Somethings must match')
+  }
+});
 
 Tinytest.add('getParams - successfully gets params', function (test) {
   const fn = text => { if (text !== 'stuff') throw 'text must be "stuff"' }

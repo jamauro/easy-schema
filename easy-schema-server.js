@@ -1,7 +1,7 @@
 import { Meteor } from 'meteor/meteor';
 import { Mongo, MongoInternals } from 'meteor/mongo';
-import { Any, Optional, Integer, AnyOf, Where, shape, _shaped, getValue, allowed, hasOperators, isArray, REQUIRED, _getParams, enforce } from './shared';
-import { pick, isObject, isEmpty, capitalize } from './utils';
+import { Any, ObjectID, Optional, Integer, AnyOf, Where, shape, _shaped, getValue, allowed, hasOperators, isArray, REQUIRED, _getParams, enforce, formatErrors } from './shared';
+import { pick, isObject, isEmpty } from './utils';
 import { ValidationError } from 'meteor/mdg:validation-error';
 import { flatten, unflatten } from 'flat'
 import { check as c } from 'meteor/check';
@@ -16,6 +16,7 @@ const config = {
 
 const typeMap = {
   String: 'string',
+  ObjectID: 'objectId',
   Number: 'double', // double for mongo, number for jsonschema
   Boolean: 'bool', // bool for mongo, boolean for jsonschema
   Date: 'date',
@@ -156,7 +157,7 @@ const createJSONSchema = (obj) => {
       } else if (isObject(value)) {
         return createJSONSchema(value);
       } else {
-        const type = typeMap[value?.name || value];
+        const type = typeMap[k === '_id' && value.condition?.toString().includes('ObjectID') ? 'ObjectID' : value?.name || value];
         return type ? { bsonType: type } : value === null ? { bsonType: 'null' } : {};
       }
     })();
@@ -224,10 +225,10 @@ Mongo.Collection.prototype.attachSchema = function(schema) {
     const collection = this;
 
     /** @type {import('meteor/check').Match.Pattern} */
-    collection.schema = Object.assign(shape(schema), { '$id': `/${collection._name}` });
+    collection.schema = { ...shape(schema), '$id': `/${collection._name}` };
 
     /** @type {import('meteor/check').Match.Pattern} */
-    collection._schemaDeepOptional = shape(collection.schema, {optionalize: true});
+    collection._schemaDeepOptional = { ...shape(schema, {optionalize: true}), '$id': `/${collection._name}` };
 
     attachMongoSchema(collection, schema);
 
@@ -280,21 +281,25 @@ const check = (data, schema, { full = false } = {}) => { // the only reason we d
   }
 
   const schemaToCheck = schemaIsObject ? ((dataHasOperators || full || schema[_shaped] && !schema['$id']) ? shapedSchema : pick(shapedSchema, Object.keys(dataToCheck))) : schema; // basically we only want to pick when necessary
+  const errors = [];
 
   try {
-    c(dataToCheck, schemaToCheck);
-    $rules && enforce(dataToCheck, $rules)
-
-  } catch ({ path, message: m }) {
-    const type = m.includes('Missing key') ? 'required' : m.includes('Expected') ? 'type' : 'condition';
-    const matches = type === 'type' && (m.match(/Expected (.+), got (.+) in/) || m.match(/Expected (.+) in/));
-    const errorMessage = type === 'required' ? 'is required' : matches ? `must be a ${matches[1]}${matches[2] ? `, not ${matches[2]}` : ''}` : m.replace(/\b(Match error:|w:|in field\s\S*)/g, '').trim();
-    const splitPath = path.split('.');
-    const name = type === 'required' ? m.split("'")[1] : splitPath.pop();
-    const message = (name && (type !== 'condition' || !m.includes('w:'))) ? `${capitalize(name.replace(/([A-Z])/g, ' $1'))} ${errorMessage}` : errorMessage;
-
-    throw new ValidationError([{ name, type, message, ...(splitPath.length > 1 && { path }) }]);
+    c(dataToCheck, schemaToCheck, { throwAllErrors: true });
+  } catch (e) {
+    Array.isArray(e) ? errors.push(...e) : errors.push(e);
   }
+
+  try  {
+    enforce(dataToCheck, $rules);
+  } catch (e) {
+    errors.push(...e)
+  }
+
+  if (errors.length) {
+    throw new ValidationError(formatErrors(errors));
+  }
+
+  return;
 };
 
 // Wrap DB write operation methods
@@ -341,4 +346,4 @@ Meteor.startup(() => {
 });
 
 const EasySchema = { config, configure, skipAutoCheck, REQUIRED }
-export { check, shape, pick, _getParams, createJSONSchema, Any, Optional, Integer, AnyOf, EasySchema }; // createJSONSchema only exported for testing purposes
+export { check, shape, pick, _getParams, createJSONSchema, Any, ObjectID, Optional, Integer, AnyOf, EasySchema }; // createJSONSchema only exported for testing purposes

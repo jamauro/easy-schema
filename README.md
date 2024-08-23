@@ -370,6 +370,18 @@ const schema = {
 }
 ```
 
+### ObjectID
+If you're using Mongo `ObjectID`s instead of Meteor's default `_id` generation, you'll need to do the following:
+
+```js
+import { ObjectID } from 'meteor/jam:easy-schema';
+
+const schema {
+  _id: ObjectID,
+  // ... rest of your schema //
+}
+```
+
 ## Configuring (optional)
 If you like the defaults, then you won't need to configure anything. But there is some flexibility in how you use this package.
 
