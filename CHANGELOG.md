@@ -1,3 +1,14 @@
+## 1.5.0
+* feat: fluent syntax with `[has]` and dot notation for setting conditions, e.g. `.min`, `.default`, `.where` etc. This is an optional feature. You can still use the object-based syntax for setting conditions, e.g. `{ type: String, ...conditions }`, if you prefer.
+* feat: set `default` values when defining a schema
+* feat: set `base` schema when using `EasySchema.configure`
+* feat: `ID` type for Meteor-generated `_id`s
+* breaking: `allow` was renamed to `enums`
+* breaking: `additionalProperties` was renamed to `extra`
+* breaking: `EasySchema.skipAutoCheck()` was replaced by setting `{ autoCheck: false }` in the `options` of a `Collection.method`
+* fix: `regex` for Mongo JSON Schema
+* fix: under-the-hood optimizations
+
 ## 1.4.0
 * feat: throw all validation errors to enable a better UX (requires Meteor `2.16+`)
 * feat: support `Mongo.ObjectID`

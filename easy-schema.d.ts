@@ -1,4 +1,86 @@
-import { Match } from 'meteor/check';
+export declare const has: unique symbol;
+
+// Base Schema class for common behavior
+declare class BaseSchema<T> {
+  constructor(type: T);
+
+  default(value: any): this;
+  where(value: (item: T) => boolean): this;
+  enums(value: any, message?: string): this;
+}
+
+// Specialized schemas for different types
+declare class StringSchema extends BaseSchema<string> {
+  min(value: number | string, message?: string): this;
+  max(value: number | string, message?: string): this;
+  regex(value: RegExp, message?: string): this;
+}
+
+declare class NumberSchema extends BaseSchema<number> {
+  min(value: number, message?: string): this;
+  max(value: number, message?: string): this;
+}
+
+declare class ArraySchema extends BaseSchema<any[]> {
+  min(value: number, message?: string): this;
+  max(value: number, message?: string): this;
+  unique(value?: boolean): this;
+  only(value?: any): this;
+}
+
+declare class ObjectSchema extends BaseSchema<object> {
+  min(value: number, message?: string): this;
+  max(value: number, message?: string): this;
+  extra(value?: boolean): this;
+  only(value?: any): this;
+}
+
+// Augment native constructors with "has" symbol-based getter
+declare global {
+  interface StringConstructor {
+    [has]: StringSchema;
+  }
+
+  interface NumberConstructor {
+    [has]: NumberSchema;
+  }
+
+  interface ArrayConstructor {
+    [has]: ArraySchema;
+  }
+
+  interface ObjectConstructor {
+    [has]: ObjectSchema;
+  }
+
+  interface BooleanConstructor {
+    [has]: BaseSchema<boolean>;
+  }
+
+  interface DateConstructor {
+    [has]: BaseSchema<Date>;
+  }
+}
+
+// Custom types for Integer, ID, and ObjectID
+interface IntegerConstructor {
+  [has]: NumberSchema;
+}
+
+interface IDConstructor {
+  [has]: BaseSchema<string>;
+}
+
+interface ObjectIDConstructor {
+  [has]: BaseSchema<Mongo.ObjectID>;
+}
+
+interface DecimalConstructor {
+  [has]: BaseSchema<any>;
+}
+
+export declare const ID: IDConstructor;
+export declare const ObjectID: ObjectIDConstructor;
 
 /**
  * Check that data matches a schema.
@@ -48,6 +130,7 @@ export declare const EasySchema: {
     * Readonly configuration options for EasySchema.
     */
   readonly config: {
+    base?: object;
     autoCheck?: boolean;
     autoAttachJSONSchema?: boolean;
     validationAction?: string;
@@ -58,6 +141,7 @@ export declare const EasySchema: {
    * Configures the settings for EasySchema.
    */
   configure: (options: {
+    base?: object;
     autoCheck?: boolean;
     autoAttachJSONSchema?: boolean;
     validationAction?: string;
@@ -68,10 +152,6 @@ export declare const EasySchema: {
    * Make a field required that was optional. See docs for more info.
    */
   readonly REQUIRED: string,
-  /**
-   * Used to skip auto check on a one-off basis inside a Meteor Method body.
-   */
-  skipAutoCheck: Function
 };
 
 declare module 'meteor/mongo' {

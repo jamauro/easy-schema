@@ -8,7 +8,7 @@ This package can be used with [jam:method](https://github.com/jamauro/method), [
 
 When using this package, you create a schema once for each Collection and attach it with `attachSchema`. When a method is called, you'll use this package's `check` function to make sure the arguments passed from the client match what is expected by the schema you defined.
 
-Then, right before the insert / update / upsert to the database, a validation will be automatically performed against the data that will be written to the database. By default, it will also be validated against the JSON Schema attached to the Collection via Mongo's JSON Schema support though you can disable this if you'd like.
+Then, right before the `insert / update / upsert` to the database, a validation will be automatically performed against the data that will be written to the database. By default, it will also be validated against the JSON Schema attached to the Collection via Mongo's JSON Schema support though you can disable this if you'd like.
 
 ## Usage
 
@@ -33,7 +33,7 @@ const schema = {
 Todos.attachSchema(schema); // attachSchema is a function that's built into this package
 ```
 
-### Use the schema with [jam:method](https://github.com/jamauro/method) Methods
+### Use the schema with [jam:method](https://github.com/jamauro/method)
 ```js
 import { createMethod } from 'meteor/jam:method';
 
@@ -51,31 +51,20 @@ export const insertTodo = createMethod({
       username: user.username
     }
 
-    const todoId = await Todos.insertAsync(todo);
-    return todoId;
+    return Todos.insertAsync(todo);
   }
 });
 ```
 See [jam:method](https://github.com/jamauro/method) for more info.
 
-### Use the check function with Validated Methods or Meteor.methods
-You can use this package with `ValidatedMethod` or [Meteor.methods](https://docs.meteor.com/api/methods.html) if you prefer. Use the `check` function provided by this package.
+### Use the check function with Meteor.methods or ValidatedMethod
+You can use this package with [Meteor.methods](https://docs.meteor.com/api/methods.html) or `ValidatedMethod` if you prefer. Use the `check` function provided by this package.
 ```js
 import { check } from 'meteor/jam:easy-schema';
-import { ValidatedMethod } from 'meteor/mdg:validated-method';
 
-export const insertTodo = new ValidatedMethod({
-  name: 'todos.insert',
-  validate(args) { // args should be an object that you pass in from the client. If you want to destructure here, then be sure to pass an object into the check function.
-    check(args, Todos.schema); // the package automatically compares the args only against the relative data inside the Todos.schema so no need to pick them out yourself.
-    // if you want, you can also pass in a custom schema, like this:
-    /* check(args, {text: {type: String, min: 1, max: 16}}) */
-  },
-  async run({ text }) {
-    const userId = Meteor.userId();
-    if (!userId) {
-      throw new Meteor.Error('not-authorized');
-    }
+Meteor.methods({
+  'todos.insert': async function({ text }) {
+    check({ text }, Todos.schema); // "text" will be automatically picked from the Todos.schema so no need to do this manually
 
     const user = await Meteor.userAsync();
 
@@ -87,56 +76,61 @@ export const insertTodo = new ValidatedMethod({
       username: user.username
     }
 
-    const todoId = await Todos.insertAsync(todo);
-    return todoId;
+    return Todos.insertAsync(todo);
   }
-});
+})
 ```
-
-Then import `insertTodo` method in your UI component and call it like you would any other Validated Method. See their [docs](https://github.com/meteor/validated-method) for more info.
 
 ## Defining Schemas
-```js
-import { Optional, Any, Integer, AnyOf } from 'meteor/jam:easy-schema';
 
-// Illustrating the various possibilities for a schema
+### Primitives
+In addition to the built-in Javascript primitives:
+* `String`
+* `Number`
+* `Boolean`
+* `Date`
+* `Array`
+* `Object`
+
+This package adds:
+* `Integer` (matches only signed 32-bit integers)
+* `ID` (matches Meteor-generated `_id`s)
+* `ObjectID` (matches `Mongo.ObjectID`s)
+* `Any` (matches anything)
+
+and supports:
+* `Decimal` (if using the `mongo-decimal` package)
+
+
+### ID
+You can simply use `String` to validate Meteor-generated `_id`s but if you'd like to be more precise you can use `ID`:
+
+```js
+import { ID } from 'meteor/jam:easy-schema';
+
 const schema = {
-  _id: String, // _id can technically be optional with inserts and upserts since it won't be created yet. this is handled automatically.
-  text: String,
-  emails: [String], // an array of strings
-  createdAt: Date,
-  private: Boolean,
-  thing: Number,
-  stuff: Object,
-  int: Integer,
-  digit: {type: Integer, min: 4, max: 12}, // min is >= and max is <=. automatically converted to JSON Schema "minimum / maximum"
-  address: {
-    street_address: Optional(String), // street address is optional
-    city: String,
-    state: {type: String, min: 0, max: 2}, // min is >= and max is <=. automatically converted to JSON Schema "minLength / maxLength"
-  },
-  messages: [{text: String, createdAt: Date}], // array of objects
-  people: [ // an array of objects with additionalProperties: true. additonalProperties is false by default.
-    {type: {name: String, age: Number, arrayOfOptionalBooleans: [Optional(Boolean)]}, additionalProperties: true}
-  ],
-  regexString: {type: String, regex: /.com$/}, // regex supported for Strings. should be a regex literal. automatically converted to JSON Schema "pattern"
-  optionalArray: Optional([String]),
-  optionalObject: Optional({thing: String, optionalString: Optional(String)}),
-  arrayOfInts: [Integer],
-  arrayOfOptionalInts: [Optional(Integer)],
-  arrayOfRegexStrings: [{type: String, regex: /.com$/}],
-  anyOf: AnyOf([String], [Date]), // AnyOf matches one or more of the items. In this example, it matches either an array of Strings or an array of Dates
-  arrayAnyOf: [AnyOf(String, Number)], // matches an array of Strings or an array of Numbers,
-  any: Any // anything, aka a blackbox
-};
+  _id: ID,
+  // ... rest of your schema //
+}
 ```
 
-### Integer
-`Integer` matches only signed 32-bit integers
+### ObjectID
+If you're using Mongo `ObjectID`s instead of Meteor's default `_id` generation, you'll need to do the following:
+
+```js
+import { ObjectID } from 'meteor/jam:easy-schema';
+
+const schema = {
+  _id: ObjectID,
+  // ... rest of your schema //
+}
+```
 
 ### Optional
 By default, everything listed in the schema is assumed to be required. For anything optional, you need to specify it with `Optional`
 ```js
+import { Optional } from 'meteor/jam:easy-schema';
+
 optionalArray: Optional([String])
 optionalObject: Optional({thing: String, optionalString: Optional(String)})
 arrayOfOptionalInts: [Optional(Integer)]
@@ -160,48 +154,60 @@ check(undefined, Optional(String)); // OK
 ### AnyOf
 `AnyOf` matches one or more of the items. If you're coming from Meteor's `Match`, this is equivalent to `Match.OneOf`.
 ```js
+import { AnyOf } from 'meteor/jam:easy-schema';
+
 anyOf: AnyOf([String], [Date]) // matches either an array of Strings or an array of Dates
 arrayAnyOf: [AnyOf(String, Number)] // matches an array of Strings or an array of Numbers
 ```
 
 ### Conditions
-You can add conditions to validate against. Here's how you do that:
+You can add conditions to validate against. You can use the fluent-style syntax by importing and using `[has]`. For example:
+
+```js
+import { has, ID } from 'meteor/jam:easy-schema';
+
+const schema = {
+  _id: ID,
+  text: String[has].min(1).max(140),
+  done: Boolean[has].default(false),
+  createdAt: Date
+}
+```
+
+Or if you prefer, you can use an object-based syntax:
+```js
+import { ID } from 'meteor/jam:easy-schema';
+
+const schema = {
+  _id: ID,
+  text: { type: String, min: 1, max: 140 },
+  done: { type: Boolean, default: false },
+  createdAt: Date
+}
+```
+
+The rest of the examples in this Readme will use the fluent-style syntax due to its conciseness and readability.
 
 #### **`min / max`**
 *Strings, Numbers, Integers, Arrays, Objects*
 
 min is `greater than or equal to` and max is `less than or equal to`. `min / max` map to the JSON Schema equivalent for the type.
+
+
 ```js
-{type: String, min: 1, max: 16} // a string that is at least 1 character and at most 16 characters
-{type: Number, min: 0.1, max: 9.9} // a number greater than or equal to 0.1 and less than or equal to 9.9
-{type: Integer, min: 10, max: 25} // an integer greater than or equal to 10 and less than or equal to 25
-{type: Array, min: 1, max: 5} // an array with at least one item and no more than 5 items
-{type: [String], min: 1, max: 5} // an array of Strings with at least one item and no more than 5 items
-{type: Object, min: 1, max: 2} // an object with at least one property and no more than 2 properties
-{type: {name: String, age: Optional(Number)}, min: 1, max: 2} // an object with the properties name and age with at least one property and no more than 2 properties
+String[has].min(1).max(16) // a string that is at least 1 character and at most 16 characters
+Number[has].min(0.1).max(9.9) // a number greater than or equal to 0.1 and less than or equal to 9.9
+Integer[has].min(10).max(25) // an integer greater than or equal to 10 and less than or equal to 25
+Array[has].min(1).max(5) // an array with at least one item and no more than 5 items
+Array[has].only(String).min(1).max(5) // an array of strings with at least one item and no more than 5 items
+Object[has].min(1).max(2) // an object with at least one property and no more than 2 properties
+Object[has].only({name: String, age: Optional(Number)}).min(1).max(2) // an object with the properties name and age with at least one property and no more than 2 properties
 ```
 
-#### **`allow`**
-*Any Type*
-
-You can specify an array of items that are allowed values with `allow` – it maps to JSON Schema's `enum`
+`Note`: where you place `min / max` matters, for example:
 ```js
-{type: String, allow: ['hello', 'hi']}
-{type: Number, allow: [1.2, 6.8, 24.5]}
-{type: Integer, allow: [145, 29]}
-{type: Boolean, allow: [true]}
-{type: Date, allow: [new Date('2021-12-17T03:24:00'), new Date('2022-01-01T03:24:00')]}
-
-// For arrays, recommend using it within the array, e.g. [{type: String, allow: ['hello', 'hi']}] as opposed to {type: [String], allow: [['hello'], ['hi']]}
-[{type: String, allow: ['hello', 'hi']}]
-{type: [String], allow: [['hello'], ['hi']]}
-{type: Array, allow: [['hello'], ['hi']]}
-// 2d arrays are supported too
-{type: [[String, Number]], allow: [['hi', 1], ['bye', 2]]}
-
-// Object examples
-{type: {hi: String, num: Optional(Number)}, allow: [{hi: 'hi', num: 2}]}
-{type: Object, allow: [{hi: 'hi', num: 2}]}
+[String[has].min(1).max(5)] // an array of strings, each with at 1 character and at most 5 characters
+Array[has].only(String).min(1).max(5) // an array of strings with at least one string and no more than 5 strings
 ```
 
 #### **`regex`**
@@ -209,7 +215,7 @@ You can specify an array of items that are allowed values with `allow` – it ma
 
 `regex` maps to JSON Schema's `pattern`.
 ```js
-{type: String, regex: /.com$/}
+String[has].regex(/.com$/)
 ```
 
 #### **`unique`**
@@ -217,15 +223,64 @@ You can specify an array of items that are allowed values with `allow` – it ma
 
 `unique` maps to JSON Schema's `uniqueItems`.
 ```js
-{type: [Number], unique: true} // an array of numbers that must be unique, e.g. [1, 2, 3]. [1, 2, 1] would fail.
+Array[has].only(Number).unique() // an array of numbers that must be unique, e.g. [1, 2, 3]. [1, 2, 1] would fail.
 ```
 
-#### **`additionalProperties`**
+#### **`extra`**
 *Objects only*
 
-By default, additionalProperties is `false`, i.e. what you define in the schema is what is expected to match the data in the db. If you want to accept additionalProperties, you can do that like this:
+By default, `extra` is `false`, i.e. what you define in the schema is what is expected to match the data in the db. If you want to accept extra key value pairs, you can do that like this:
 ```js
-{type: {name: String, createdAt: Date}, additionalProperties: true}
+Object[has].only({name: String, createdAt: Date}).extra()
+```
+
+#### **`enums`**
+*Any Type*
+
+You can specify an array of items that are allowed values with `enums` – it maps to JSON Schema's `enum`
+```js
+String[has].enums(['hello', 'hi'])
+Number[has].enums([1.2, 6.8, 24.5])
+Integer[has].enums([145, 29])
+Boolean[has].enums([true])
+Date[has].enums([new Date('2021-12-17T03:24:00'), new Date('2022-01-01T03:24:00')])
+
+// Arrays
+[String[has].enums(['hello', 'hi'])]
+// 2d arrays are supported too
+Array[has].only([[String, Number]]).enums([['hi', 1], ['bye', 2]])
+
+// Objects
+Object[has].only({hi: String, num: Optional(Number)}).enums([{hi: 'hi', num: 2}])
+Object[has].enums([{hi: 'hi', num: 2}])
+```
+
+#### **`default`**
+*Any Type*
+
+You can set a default value to use unless a value is explicitly provided. There are two types of defaults: `static` and `dynamic`.
+
+Static defaults will be set once when the doc is inserted. For example:
+
+```js
+const schema = {
+  // ... //
+  text: String[has].default('hi'),
+  done: Boolean[has].default(false),
+  creatorId: ID[has].default(Meteor.userId),
+  username: String[has].default(Meteor.user), // will use the value Meteor.user.username
+  createdAt: Date[has].default(Date.now)
+}
+```
+
+Dynamic defaults will be set on each write (`insert / update / upsert`) to a doc. Pass in a function to make a default dynamic, for exmaple:
+
+```js
+const schema = {
+  // ... //
+  updaterId: ID[has].default(() => Meteor.userId()),
+  updatedAt: Date[has].default(() => Date.now())
+}
 ```
 
 #### **`where`**
@@ -241,7 +296,7 @@ You can make a property conditionally required on its value.
 ```js
 {
   // ... //
-  text: {type: Optional(String), where: text => { if (text === 'world') throw EasySchema.REQUIRED }}, // you can also destructure text in the where function if you prefer
+  text: Optional(String[has].where(text => { if (text === 'world') throw EasySchema.REQUIRED })), // you can also destructure text in the where function if you'd like
   // ... //
 }
 ```
@@ -253,9 +308,9 @@ You can make a property of the schema dependent on the value of a sibling proper
 {
   // ... //
   text: Optional(String),
-  status: {type: Optional(String), where: ({text, status}) => {
+  status: Optional(String[has].where(({ text, status }) => {
     if (text && !status) throw EasySchema.REQUIRED
-  }},
+  })),
   // ... //
 }
 ```
@@ -264,21 +319,30 @@ You can make a property of the schema dependent on the value of a sibling proper
 {
   // ... //
   password: String,
-  confirmPassword: {type: String, where: ({password, confirmPassword}) => {
+  confirmPassword: String[has].where(({ password, confirmPassword }) => {
     if (confirmPassword !== password) throw 'Passwords must match'
-  }},
+  }),
   // ... //
 }
 ```
 
 ### Customizing Error Messages
-Easy Schema comes with nicely formatted error messages out of the box, but you can easily customize them when you use these conditions:
-* min / max
-* allow
-* regex
-* unique
+Easy Schema comes with nicely formatted error messages out of the box, but you can easily customize them. Customizing is supported for these conditions:
+
+* `min`
+* `max`
+* `regex`
+* `enums`
+* `unique`
 
 Here's an example:
+```js
+const schema = {
+  email: String[has].min(1, 'You must enter an email').regex(/@/, 'You must enter a valid email')
+}
+```
+
+`Note`: if you're using the object-based syntax rather than `[has]`, it would look like this:
 ```js
 const schema = {
   email: {type: String, min: [1, 'You must enter an email'], regex: [/@/, 'You must enter a valid email']}
@@ -288,9 +352,9 @@ const schema = {
 For anything more involved you can use the [`where`](#where) function. Note that conditions are available as a second parameter:
 ```js
 const schema = {
-  email: {type: String, min: 1, regex: /@/, where: (email, {min, regex}) => {
+  email: String[has].min(1).regex(/@/).where((email, { min, regex }) => {
     // ... something complex that couldn't be handled otherwise ... //
-  }}
+  })
 }
 ```
 
@@ -298,21 +362,33 @@ const schema = {
 In general, it's recommended to specify what you expect but sometimes it's helpful just to validate against a blackbox, i.e. validating the contents is not important or wanted.
 
 ```js
-// For blackbox objects, you can do either of these
+// For blackbox objects
 {stuff: Object}
-{stuff: {type: Object}} // this can come in handy if you want to use conditions
 ```
 
 ```js
-// For blackbox arrays, you can do either of these
+// For blackbox arrays
 {things: Array}
-{things: {type: Array}} // this can come in handy if you want to use conditions
 ```
 
 ```js
-// For a true blackbox, you can do either of these
+// For a true blackbox
 {something: Any}
-{something: {type: Any}}
+```
+
+### Setting a base schema
+You can easily set a base schema that all of your schemas will use. For example:
+
+```js
+import { EasySchema } from 'meteor/jam:easy-schema';
+
+const base = {
+  createdAt: Date,
+  updatedAt: Date
+}
+
+EasySchema.configure({ base });
+// all schemas will now have a createdAt and updatedAt so you don't need to manually add them each time when writing out your other schemas
 ```
 
 ### Embedding Schemas
@@ -322,7 +398,7 @@ If you have a schema that repeats, you can define it once and then embed it.
 const addressSchema = {
   street: String,
   city: String,
-  state: {type: String, min: 2, max: 2}
+  state: String[has].min(2).max(2)
 }
 
 const personSchema = {
@@ -370,29 +446,72 @@ const schema = {
 }
 ```
 
-### ObjectID
-If you're using Mongo `ObjectID`s instead of Meteor's default `_id` generation, you'll need to do the following:
-
+### Examples
 ```js
-import { ObjectID } from 'meteor/jam:easy-schema';
+import { has, ID, Optional, Any, Integer, AnyOf } from 'meteor/jam:easy-schema';
 
 const schema = {
-  _id: ObjectID,
-  // ... rest of your schema //
-}
+  _id: ID,
+  text: String,
+  emails: [String], // an array of strings
+  createdAt: Date,
+  private: Boolean,
+  thing: Number,
+  stuff: Object, // blackbox object
+  int: Integer,
+  digit: Integer[has].min(4).max(12), // min is >= and max is <=
+  address: {
+    street: Optional(String), // street is optional
+    city: String,
+    state: String[has].min(2).max(2) // state has exactly 2 characters
+  },
+  messages: [{text: String, createdAt: Date}], // array of objects
+  people: [ // an array of objects with extra: true, meaning it accepts additional properties. extra is false by default.
+    Object[has].only({name: String, age: Number, arrayOfOptionalBooleans: [Optional(Boolean)]}.extra()
+  ],
+  regexString: String[has].regex(/.com$/), // regex supported for Strings. should be a regex literal.
+  optionalArray: Optional([String]),
+  optionalObject: Optional({thing: String, optionalString: Optional(String)}),
+  arrayOfInts: [Integer],
+  arrayOfOptionalInts: [Optional(Integer)],
+  arrayOfRegexStrings: [String[has].regex(/.com$/)],
+  anyOf: AnyOf([String], [Date]), // AnyOf matches one or more of the items. In this example, it matches either an array of Strings or an array of Dates
+  arrayAnyOf: [AnyOf(String, Number)], // matches an array of Strings or an array of Numbers,
+  something: Any // matches anything, aka a blackbox
+};
 ```
 
 ## Configuring (optional)
 If you like the defaults, then you won't need to configure anything. But there is some flexibility in how you use this package.
 
+Here are the global defaults:
+```js
+const config = {
+  base: {}, // set a base schema for all your schemas to use
+  autoCheck: true, // automatically validate on the server prior to insert / update / upsert
+  autoAttachJSONSchema: true, // automatically use a MongoDB JSON Schema
+  validationAction: 'error', // set MongoDB JSON Schema validation action
+  validationLevel: 'strict', // set MongoDB JSON Schema validation level
+  additionalBsonTypes: {} // set additional MongoDB bson types
+};
+```
+
+To change the global defaults, use:
+```js
+// put this in a file that's imported on both the client and server into their repective main.js
+import { EasySchema } from 'meteor/jam:easy-schema';
+
+EasySchema.configure({
+  // ... change the defaults here ... //
+});
+```
+
 By default, an automatic validation will be performed on the server prior to `insert / update / upsert` operations. If you don't want that, you can turn it off by setting `autoCheck` to `false`. The data will still be validated against the JSON Schema but you won't get as friendly of error messages and you won't know that a write fails until it's attempted on the database.
 
 ```js
-// in /server/somewhere.js
-`Do not put in /server/main.js. Make sure it's in a different file on the server that is imported at the top of your /server/main.js`
 import { EasySchema } from 'meteor/jam:easy-schema';
 
-EasySchema.configure({autoCheck: false});
+EasySchema.configure({ autoCheck: false });
 ```
 
 If you turn `autoCheck` off, you can still validate manually by using the `check` function
@@ -418,15 +537,9 @@ const schema = Todos.schema;
 check(data, schema, {full: true}); // will perform a full check only on the server
 ```
 
-You can also skip an auto check on a one-off basis by calling `EasySchema.skipAutoCheck()` inside the body of a Meteor Method.
+You can also skip an auto check on a one-off basis turning it off for that operation with`{ autoCheck: false }`
 ```js
-import { EasySchema } from 'meteor/jam:easy-schema';
-
-// Inside Meteor Method body
-EasySchema.skipAutoCheck();
-
-// optionally check manually
-// perform db write operation
+await Todos.insertAsync(..., { autoCheck: false });
 ```
 
 You can prevent automatically attaching a JSON Schema to your Collection by setting `autoAttachJSONSchema` to `false`. If you stick with the default of automatically attaching a JSON Schema, you can configure the `validationAction` and `validationLevel` – see Mongo's [Schema Validation](https://www.mongodb.com/docs/v4.2/core/schema-validation/) for more info.
@@ -435,9 +548,9 @@ You can prevent automatically attaching a JSON Schema to your Collection by sett
 import { EasySchema } from 'meteor/jam:easy-schema';
 
 EasySchema.configure({
-  // autoAttachJSONSchema: false,
-  validationAction: 'warn', // 'error' is default
-  valdiationLevel: 'moderate' // 'strict' is default
+  autoAttachJSONSchema: false,
+  // validationAction: 'warn', // 'error' is default
+  // valdiationLevel: 'moderate' // 'strict' is default
 });
 ```
 
