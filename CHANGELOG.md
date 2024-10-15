@@ -1,3 +1,6 @@
+## 1.5.1
+* fix: improve attaching Mongo JSON Schema when a collection doesn't exist yet in the db
+
 ## 1.5.0
 * feat: fluent syntax with `[has]` and dot notation for setting conditions, e.g. `.min`, `.default`, `.where` etc. This is an optional feature. You can still use the object-based syntax for setting conditions, e.g. `{ type: String, ...conditions }`, if you prefer.
 * feat: set `default` values when defining a schema
