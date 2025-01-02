@@ -1,4 +1,38 @@
+import { Match } from 'meteor/check';
+
 export declare const has: unique symbol;
+
+type HasFluentSchema<T> = {
+  [has]: BaseSchema<T>
+};
+
+// Object pattern limited to 
+export type ObjectPattern<T> = {
+  type: HasFluentSchema<T>
+};
+
+export type Pattern = 
+  | BaseSchema<any>
+  | HasFluentSchema<any>
+  | ObjectPattern<any>
+  | [Pattern]
+  // Meteor Check doesn't require Pattern[], because check schemas are ephemeral
+  // so typescript gives e.g. [String] the strict type of [StringConstructor]
+  // but a schema declared as a variable does not have this benefit of the doubt
+  // and is inferred as StringConstructor[]
+  // Object.freeze or `as const` makes TS complain about mutability... can't win.
+  | Pattern[]
+  | {[key: string]: Pattern}
+  | Match.Pattern;
+
+export type PatternMatch<T extends Pattern> =
+  T extends BaseSchema<infer U> ? U :
+  T extends HasFluentSchema<infer U> ? U :
+  T extends [Pattern] ? PatternMatch<T[0]>[] :
+  T extends Pattern[] ? PatternMatch<T[0]>[] :
+  T extends ObjectPattern<infer U> ? U :
+  T extends {[key: string]: Pattern} ? {[K in keyof T]: PatternMatch<T[K]>} :
+  Match.PatternMatch<T>;
 
 // Base Schema class for common behavior
 declare class BaseSchema<T> {
@@ -87,10 +121,10 @@ export declare const ObjectID: ObjectIDConstructor;
  * @param data The data to check
  * @param schema The schema to match `data` against
  */
-export declare function check<T extends Match.Pattern>(
+export declare function check<T extends Pattern>(
   data: any,
   schema: T
-): asserts data is Match.PatternMatch<T>;
+): asserts data is PatternMatch<T>;
 
 
 /** Matches any value. */
@@ -104,7 +138,7 @@ export declare const Integer: Match.Matcher<number>;
   */
 export declare function Optional<T extends Pattern>(
   pattern: T
-): Matcher<PatternMatch<T> | undefined | null>;
+): Match.Matcher<PatternMatch<T> | undefined | null>;
 
 /**
  * Shapes an object based on a POJO.
@@ -155,10 +189,10 @@ export declare const EasySchema: {
 };
 
 declare module 'meteor/mongo' {
-  module Mongo {
+  namespace Mongo {
     interface Collection<T> {
-      attachSchema(schema: object): void;
-      schema?: Match.Pattern;
+      attachSchema<U extends Pattern>(schema: U): Collection<PatternMatch<U>>
+      schema?: Pattern;
     }
   }
 }
