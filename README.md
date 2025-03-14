@@ -1,14 +1,20 @@
 # Easy Schema
 
-Easy Schema is an easy way to add schema validation for Meteor apps. It extends the functionality provided by Meteor's [check](https://docs.meteor.com/api/check.html) to validate arguments passed to Meteor Methods and validates automatically on the server prior to write operations `insert / update / upsert`. It also automatically generates a [MongoDB JSON Schema](https://www.mongodb.com/docs/manual/core/schema-validation/specify-json-schema/#std-label-schema-validation-json) and attaches it to the database's Collection. It's meant to be lightweight and fast. By default, it validates automatically but it is configurable.
-
-This package can be used with [jam:method](https://github.com/jamauro/method), [Meteor.methods](https://docs.meteor.com/api/methods.html), [Validated Method](https://github.com/meteor/validated-method), or any other package that includes a way to validate the method via a function. It also has built-in support for [Validation Error](https://github.com/meteor/validation-error) for friendlier error messages.
+Easy Schema is an easy way to add schema validation for Meteor apps. Its key features are:
+* Create one schema, attach it to your collection, and then reuse it across `Meteor.methods`
+* Isomorphic so that it works with Optimistic UI
+* Automatic validation on the client and server prior to DB write (optional)
+* Automatic creation and attachment of a MongoDB JSON Schema (optional)
+* A schema syntax that is a joy to write and read — brevity and clarity
+* Lightweight and fast
+* Native to the Meteor ecosystem – extends Meteor's [check](https://docs.meteor.com/api/check.html)for validation, uses [Validation Error](https://github.com/meteor/validation-error) for friendlier error messages, and supports Meteor's `mongo-decimal`
+* Integrates seamlessly with [jam:method](https://github.com/jamauro/method) (optional)
 
 ## Basics
 
-When using this package, you create a schema once for each Collection and attach it with `attachSchema`. When a method is called, you'll use this package's `check` function to make sure the arguments passed from the client match what is expected by the schema you defined.
+When using this package, you create a schema once for each Collection and attach it with `attachSchema`. When a method is called, the arguments passed from the client are validated against the schema you defined.
 
-Then, right before the `insert / update / upsert` to the database, a validation will be automatically performed against the data that will be written to the database. By default, it will also be validated against the JSON Schema attached to the Collection via Mongo's JSON Schema support though you can disable this if you'd like.
+Right before an `insert / update / upsert` to the database, the data will be automatically validated. By default, it will also be validated against the Mongo JSON Schema that was automatically created though you can disable this if you'd like.
 
 ## Usage
 
@@ -33,13 +39,13 @@ const schema = {
 Todos.attachSchema(schema); // attachSchema is a function that's built into this package
 ```
 
-### Use the schema with [jam:method](https://github.com/jamauro/method)
+### Use the schema with [jam:method](https://github.com/jamauro/method) (optional)
 ```js
 import { createMethod } from 'meteor/jam:method';
 
 export const insertTodo = createMethod({
   name: 'todos.insert',
-  schema: Todos.schema,
+  schema: Todos.schema, // "text" will be automatically picked from the Todos.schema when the method is created
   async run({ text }) {
     const user = await Meteor.userAsync();
 
@@ -57,8 +63,11 @@ export const insertTodo = createMethod({
 ```
 See [jam:method](https://github.com/jamauro/method) for more info.
 
-### Use the check function with Meteor.methods or ValidatedMethod
-You can use this package with [Meteor.methods](https://docs.meteor.com/api/methods.html) or `ValidatedMethod` if you prefer. Use the `check` function provided by this package.
+### Use the `check` function with Meteor.methods, ValidatedMethod, or any other method package
+If you prefer, you can use this package with [Meteor.methods](https://docs.meteor.com/api/methods.html), [ValidatedMethod](https://github.com/meteor/validated-method/tree/master), or any other package that that includes a way to validate the method via a function.
+
+Use the `check` function provided by this package.
+
 ```js
 import { check } from 'meteor/jam:easy-schema';
 
@@ -94,6 +103,7 @@ In addition to the built-in Javascript primitives:
 
 This package adds:
 * `Integer` (matches only signed 32-bit integers)
+* `Double` (matches either Number or Integer, see [Working with Numbers](#working-with-numbers))
 * `ID` (matches Meteor-generated `_id`s)
 * `ObjectID` (matches `Mongo.ObjectID`s)
 * `Any` (matches anything)
@@ -226,14 +236,6 @@ String[has].regex(/.com$/)
 Array[has].only(Number).unique() // an array of numbers that must be unique, e.g. [1, 2, 3]. [1, 2, 1] would fail.
 ```
 
-#### **`extra`**
-*Objects only*
-
-By default, `extra` is `false`, i.e. what you define in the schema is what is expected to match the data in the db. If you want to accept extra key value pairs, you can do that like this:
-```js
-Object[has].only({name: String, createdAt: Date}).extra()
-```
-
 #### **`enums`**
 *Any Type*
 
@@ -358,6 +360,19 @@ const schema = {
 }
 ```
 
+### Allowing additional properties
+By default, what you define in the schema is what is expected to match the data in the db. If you want to accept additional properties, you can do that using `...Any` like this:
+
+```js
+const schema = {
+  _id: ID,
+  name: String,
+  createdAt: Date,
+  address: { city: String, ...Any },
+  ...Any
+}
+```
+
 ### Blackboxes
 In general, it's recommended to specify what you expect but sometimes it's helpful just to validate against a blackbox, i.e. validating the contents is not important or wanted.
 
@@ -410,23 +425,29 @@ const personSchema = {
 ```
 
 ### Working with Numbers
-Currently, numbers like `1` and `1.0` are both considered to be type `Integer` by the Node Mongo driver. Numbers like `1.2` are considered a `Double` as you might expect.
+
+#### When using Mongo JSON Schemas
+
+Currently, numbers like `1` and `1.0` are both considered to be type `Integer` by the Node Mongo driver. Numbers like `1.2` are considered a double as you might expect.
 
 Javascript has the `Number` prototype which is technically a double-precision floating point numeric value but if you do `Number.isInteger(1.0)` in your console you'll see it’s `true`. The JSON Schema spec also says that `1.0` should be treated as an `Integer`.
 
 **What this means for you**
 
-Basically, if you can ensure that the numbers you'll store will never be or sum to `.0` or `.0000000` etc, and you don't require precision, then it’s fine to use the `Number` type, which will be mapped to `bsonType: 'double'` in the JSON Schema this package generates and attaches to the Mongo Collection. Depending on your situation, you might be better of using `Integer` or storing the numbers as `String` and convert them to Numbers when you need to perform some simple math. Otherwise if you use `Number` and you have a situation where some data of yours sums to, for example `34.000000`, the Node Mongo driver will see that as an integer `34` and will complain that it was expecting `bsonType: 'double'`.
+Basically, if you can ensure that the numbers you'll store will never be or sum to `.0` or `.0000000` etc, and you don't require precision, then it’s fine to use the `Number` type, which will be mapped to `bsonType: 'double'` in the JSON Schema generated by this package.
 
-One way to get around this – and prevent raising an error when you're ok using floating numbers – would be to define your schema like:
+Otherwise, when you're ok using floating numbers and you don't want to be concened with trailing zeros, you can use `Double` which will accept either a `Number` or an `Integer`, aka `AnyOf(Number, Integer)`:
+
 ```js
 const schema = {
   _id: String,
-  num: AnyOf(Number, Integer)
+  num: Double
 }
 ```
 
-**Precise numbers**
+Depending on your situation, you might be better off using `Integer` or storing the numbers as `String` and convert them to Numbers when you need to perform some simple math. If you use `Number` and you have a situation where some data of yours sums to, for example `34.000000`, the Node Mongo driver will see that as an integer `34` and will complain that it was expecting `bsonType: 'double'`.
+
+#### When number precision is needed
 
 If you need precision for your numbers, and want to avoid weird floating point math where `0.1 + 0.2 = 0.30000000000000004` then you should probably store them as `Decimal`. Here's what Mongo has to say about [modeling monetary data](https://www.mongodb.com/docs/manual/tutorial/model-monetary-data/#std-label-numeric-model-use-case).
 
@@ -446,9 +467,36 @@ const schema = {
 }
 ```
 
+### Type inference
+When you use the `check` function, the types from your schema are inferred automatically.
+
+```js
+const schema = {
+  _id: String,
+  name: String[has].min(1).max(10),
+  age: Optional(Number)
+}
+
+check(data, schema);
+data.// hovering here will show the expected types based on the schema
+```
+
+#### Typed Collections (optional)
+When using typescript, you can take it a step further by adding an inferred type to your Collection.
+
+```ts
+import { schema } from './schema';
+import { type Infer } from 'meteor/jam:easy-schema';
+
+type Todo = Infer<typeof schema>
+export const Todos = new Mongo.Collection<Todo>('todos', ...)
+Todos.attachSchema(schema);
+// Todos is now a typed collection
+```
+
 ### Examples
 ```js
-import { has, ID, Optional, Any, Integer, AnyOf } from 'meteor/jam:easy-schema';
+import { has, ID, Optional, Any, Integer, Double, AnyOf } from 'meteor/jam:easy-schema';
 
 const schema = {
   _id: ID,
@@ -456,6 +504,7 @@ const schema = {
   emails: [String], // an array of strings
   createdAt: Date,
   private: Boolean,
+  num: Double,
   thing: Number,
   stuff: Object, // blackbox object
   int: Integer,
@@ -466,8 +515,8 @@ const schema = {
     state: String[has].min(2).max(2) // state has exactly 2 characters
   },
   messages: [{text: String, createdAt: Date}], // array of objects
-  people: [ // an array of objects with extra: true, meaning it accepts additional properties. extra is false by default.
-    Object[has].only({name: String, age: Number, arrayOfOptionalBooleans: [Optional(Boolean)]}.extra()
+  people: [ // an array of objects that accepts additional properities but with a max of 4 properties
+    Object[has].only({name: String, age: Number, ...Any}).max(4)
   ],
   regexString: String[has].regex(/.com$/), // regex supported for Strings. should be a regex literal.
   optionalArray: Optional([String]),

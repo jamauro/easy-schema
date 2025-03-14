@@ -1,12 +1,13 @@
 import { Tinytest } from 'meteor/tinytest';
 import { Mongo } from 'meteor/mongo';
 import { Decimal } from 'meteor/mongo-decimal';
-import { has, Integer, Any, ID, ObjectID, Optional, AnyOf, check, EasySchema } from 'meteor/jam:easy-schema';
-import { shape, Where, _getParams } from './lib/shape.js';
+import { has, Integer, Double, Any, ID, ObjectID, Optional, AnyOf, check, EasySchema } from 'meteor/jam:easy-schema';
+import { shape, Where, _getParams, _rules } from './lib/shape.js';
 import { isEqual } from './lib/utils/shared';
 import { check as c, Match } from 'meteor/check';
 import { Random } from 'meteor/random';
 import { DDP } from 'meteor/ddp-client';
+import { Tracker } from 'meteor/tracker';
 
 const { createJSONSchema } = Meteor.isServer ? require('./lib/attach/server') : {};
 
@@ -17,6 +18,7 @@ const testSchema = {
   createdAt: Date,
   bool: Boolean,
   num: Number,
+  double: Double,
   stuff: Object,
   int: Integer,
   minMaxString: {type: String, min: 0, max: 20},
@@ -34,7 +36,7 @@ const testSchema = {
     city: String,
     state: {type: String, min: 0, max: 2},
   },
-  people: [{type: {name: String, age: Number, arrayOfOptionalBooleans: [Optional(Boolean)]}, extra: true}],
+  people: [{type: {name: String, age: Number, arrayOfOptionalBooleans: [Optional(Boolean)]}, min: 3}],
   optionalArray: Optional([String]),
   optionalObject: Optional({thing: String, optionalString: Optional(String)}),
   arrayOfInts: [Integer],
@@ -63,6 +65,7 @@ const testSchemaSugar = {
   createdAt: Date,
   bool: Boolean,
   num: Number,
+  double: Double,
   stuff: Object,
   int: Integer,
   minMaxString: String[has].min(0).max(20),
@@ -80,7 +83,7 @@ const testSchemaSugar = {
     city: String,
     state: String[has].min(0).max(2),
   },
-  people: [Object[has].only({name: String, age: Number, arrayOfOptionalBooleans: [Optional(Boolean)]}).extra()],
+  people: [Object[has].only({name: String, age: Number, arrayOfOptionalBooleans: [Optional(Boolean)]}).min(3)],
   optionalArray: Optional([String]),
   optionalObject: Optional({thing: String, optionalString: Optional(String)}),
   arrayOfInts: [Integer],
@@ -109,6 +112,7 @@ const testSchemaShapedManual = {
   createdAt: Date,
   bool: Boolean,
   num: Number,
+  double: Double,
   stuff: Object,
   int: Integer,
   minMaxString: Where({type: String, min: 0, max: 20}),
@@ -127,7 +131,7 @@ const testSchemaShapedManual = {
     state: Where({type: String, min: 0, max: 2}),
   },
   people: [
-    Where({type: {name: String, age: Number, arrayOfOptionalBooleans: [Optional(Boolean)]}, extra: true})
+    Where({type: {name: String, age: Number, arrayOfOptionalBooleans: [Optional(Boolean)]}, min: 3})
   ],
   optionalArray: Optional([String]),
   optionalObject: Optional({thing: String, optionalString: Optional(String)}),
@@ -146,10 +150,10 @@ const testSchemaShapedManual = {
   any: Any,
   simpleWhere: Where({type: String, where: value => value === 'simple'}),
   dependWhere: String,
-  $rules: [{path: ['dependWhere'], deps: ['text'], rule: ({text, dependWhere}) => {
-    if (text === 'stuff' && !dependWhere) throw 'nope'
-  }}]
 };
+testSchemaShapedManual[_rules] =[{path: ['dependWhere'], deps: ['text'], rule: ({text, dependWhere}) => {
+  if (text === 'stuff' && !dependWhere) throw 'nope'
+}}]
 
 const testSchemaShapedOptionalManual = {
   _id: Optional(String),
@@ -158,6 +162,7 @@ const testSchemaShapedOptionalManual = {
   createdAt: Optional(Date),
   bool: Optional(Boolean),
   num: Optional(Number),
+  double: Optional(Match.OneOf(Optional(Number), Optional(Integer))),
   stuff: Optional(Object),
   int: Optional(Integer),
   minMaxString: Optional(Where({type: String, min: 0, max: 20})),
@@ -176,7 +181,7 @@ const testSchemaShapedOptionalManual = {
     state: Optional(Where({type: String, min: 0, max: 2})),
   }),
   people: Optional([
-    Optional(Where({type: Optional({name: Optional(String), age: Optional(Number), arrayOfOptionalBooleans: Optional([Optional(Boolean)])}), extra: true}))
+    Optional(Where({type: Optional({name: Optional(String), age: Optional(Number), arrayOfOptionalBooleans: Optional([Optional(Boolean)])}), min: 3}))
   ]),
   optionalArray: Optional([Optional(String)]),
   optionalObject: Optional({thing: Optional(String), optionalString: Optional(String)}),
@@ -195,10 +200,10 @@ const testSchemaShapedOptionalManual = {
   any: Optional(Any),
   simpleWhere: Optional(Where({type: String, where: value => value === 'simple'})),
   dependWhere: Optional(String),
-  $rules: [{path: ['dependWhere'], deps: ['text'], rule: ({text, dependWhere}) => {
-    if (text === 'stuff' && !dependWhere) throw 'nope'
-  }}]
 };
+testSchemaShapedOptionalManual[_rules] = [{path: ['dependWhere'], deps: ['text'], rule: ({text, dependWhere}) => {
+  if (text === 'stuff' && !dependWhere) throw 'nope'
+}}]
 
 const schemaAsIs = {
   _id: Optional(String),
@@ -218,18 +223,26 @@ const schemaAsIs = {
   anyOf: AnyOf([String], [Date]),
 }
 
+const doubleSchema = {
+  _id: String,
+  num: Double,
+  nums: [Double],
+  things: [{ a: String, b: Double }],
+  stuff: { c: String, d: Double }
+};
+
 const addressSchema = {
   street: String,
   city: String,
   state: {type: String, min: 2, max: 2}
-}
+};
 
 const personSchema = {
   _id: String,
   name: String,
   homeAddress: addressSchema,
   billingAddress: Optional(addressSchema),
-}
+};
 
 const personSchemaShapedManual = {
   _id: String,
@@ -244,7 +257,7 @@ const personSchemaShapedManual = {
     city: String,
     state: Where({type: String, min: 2, max: 2})
   })
-}
+};
 
 const messageSchema = {
   title: String,
@@ -270,7 +283,7 @@ const messageSchema = {
   lastTouched: Date,
   readBy: [{userId: String, timestamp: Date}],
   authorId: String
-}
+};
 
 const typeSchema = {
   _id: String,
@@ -290,10 +303,10 @@ const typeSchemaShapedManual = {
   }
 };
 
-/*console.log('messageSchema SHAPED');
-console.dir(shape(messageSchema), {depth: null})
-console.log('messageSchema JSONSchema');
-console.dir(createJSONSchema(messageSchema), {depth: null}); */
+// console.log('messageSchema SHAPED');
+// console.dir(shape(messageSchema), {depth: null})
+// console.log('messageSchema JSONSchema');
+// console.dir(createJSONSchema(messageSchema), {depth: null});
 
 /// String ///
 
@@ -610,6 +623,84 @@ const allowIntSchemaHas = {
 }
 ///
 
+/// Double ///
+const minDoubleSchema = {
+  _id: Optional(String),
+  minDouble: {type: Double, min: 1000}
+}
+const minDoubleData = {
+  _id: '1',
+  minDouble: 1001.1
+}
+const minDoubleDataFail = {
+  _id: '1',
+  minDouble: 1
+}
+
+const maxDoubleSchema = {
+  _id: Optional(String),
+  maxDouble: {type: Double, max: 30}
+}
+const maxDoubleData = {
+  _id: '1',
+  maxDouble: 29.9
+}
+const maxDoubleDataFail = {
+  _id: '1',
+  maxDouble: 31
+}
+
+const minMaxDoubleSchema = {
+  _id: Optional(String),
+  minMaxDouble: {type: Double, min: 10, max: 15}
+}
+const minMaxDoubleData = {
+  _id: '1',
+  minMaxDouble: 11.2
+}
+const minMaxDoubleDataFailLow = {
+  _id: '1',
+  minMaxDouble: 5
+}
+const minMaxDoubleDataFailHigh = {
+  _id: '1',
+  minMaxDouble: 20
+}
+
+const allowDoubleSchema = {
+  _id: Optional(String),
+  double: {type: Double, enums: [1000, 11.1]}
+}
+const allowDoubleData = {
+  _id: '1',
+  double: 11.1
+}
+const allowDoubleDataFail = {
+  _id: '1',
+  double: 1
+}
+
+const minDoubleSchemaHas = {
+  _id: Optional(String),
+  minDouble: Double[has].min(1000)
+}
+
+const maxDoubleSchemaHas = {
+  _id: Optional(String),
+  maxDouble: Double[has].max(30)
+}
+
+const minMaxDoubleSchemaHas = {
+  _id: Optional(String),
+  minMaxDouble: Double[has].min(10).max(15)
+}
+
+const allowDoubleSchemaHas = {
+  _id: Optional(String),
+  double: Double[has].enums([1000, 11.1])
+}
+///
+
 /// Decimal ///
 const minDecimalSchema = {
   _id: Optional(String),
@@ -922,7 +1013,7 @@ const minObjDataFail = {
 
 const maxObjSchema = {
   _id: Optional(String),
-  maxObj: {type: {thing: String, num: Number}, extra: true, max: 3}
+  maxObj: {type: {thing: String, num: Number, ...Any}, max: 3}
 }
 const maxObjData = {
   _id: '1',
@@ -966,7 +1057,7 @@ const minObjSchemaHas = {
 
 const maxObjSchemaHas = {
   _id: Optional(String),
-  maxObj: Object[has].only({thing: String, num: Number}).extra().max(3)
+  maxObj: Object[has].only({thing: String, num: Number, ...Any}).max(3)
 }
 
 const genericObjSchemaHas = {
@@ -1089,6 +1180,39 @@ const anyOfNumData = {
 const anyOfDataFail = {
   _id: '1',
   thing: true
+}
+///
+
+/// Object with extra props using ...Any ///
+const extraSchema = {
+  _id: Optional(String),
+  text: String,
+  something: {
+    stuff: String,
+    embed: { more: String, ...Any },
+    nice: Object[has].only({ b: String, ...Any }).max(2), //{ type: { b: String, ...Any }, max: 2 },
+    ...Any
+  },
+  things: [{ yo: String, ...Any }],
+  ...Any
+};
+
+const extraDataFail = {
+  _id: '1',
+  text: 'hi',
+  something: { stuff: 'hi', embed: { more: '1', mas: '2', c: 'c' }, nice: { b: 'b', c: 'c', d: 'd' }, anything: 'anything' },
+  things: [{ yo: 'yo', sup: 'sup' }],
+  howdy: 'howdy',
+  hello: [{ s: 's', t: 't' }]
+};
+
+const extraData = {
+  _id: '1',
+  text: 'hi',
+  something: { stuff: 'hi', embed: { more: '1', mas: '2' }, nice: { b: 'b', c: 'c' }, hi: 'hi' },
+  things: [{ yo: 'yo', sup: 'sup' }],
+  howdy: 'howdy',
+  hello: [{ s: 's', t: 't' }]
 }
 ///
 
@@ -1319,7 +1443,7 @@ const insertNote = async ({ text, stuff }) => Notes.insertAsync({ text, stuff })
 const updateNote = async ({ _id, text, stuff, something, anotherSomething }) => Notes.updateAsync({ _id }, { $set: { stuff, text, something, anotherSomething }});
 Meteor.methods({ insertNote, updateNote });
 
-const userId = Random.id();
+const userId = "Es4wRRECowhw8zh2e";
 const user = { _id: userId, username: 'bob' }
 Meteor.userId = () => userId;
 Meteor.user = () => user;
@@ -1338,15 +1462,41 @@ const dogsSchema = {
   greeting: Optional(String),
   anotherNum: Optional(Integer)
 };
-Dogs.attachSchema(dogsSchema)
+Dogs.attachSchema(dogsSchema);
+
+if (Meteor.isServer) {
+  Meteor.publish('dogs', function() {
+    return Dogs.find({})
+  });
+}
 
 const insertUser = async () => Meteor.users.insertAsync(user);
-const removeUsers = async () => Meteor.users.removeAsync({});
-const insertDog = async ({ breed } = {}) => breed ? Dogs.insertAsync({ breed }) : Dogs.insertAsync();
-const updateDog = async ({ _id, breed }) => Notes.updateAsync({ _id }, { $set: { breed }});
+const removeUsers = async () => Meteor.users.removeAsync({ _id: userId });
+
+async function insertDog({ breed } = {}) {
+  this.userId = userId; // mock userId
+  return Dogs.insertAsync({ ...(breed && { breed }) });
+}
+
+async function updateDog({ _id, breed }, inc = false) {
+  this.userId = userId; // mock userId
+  return Dogs.updateAsync({ _id }, { ...(breed && {$set: { breed }}), ...(inc && {$inc: {num: 1}})});
+}
+
+async function replaceDog({_id, ...rest}) {
+  this.userId = userId; // mock userId
+  const { embed, ...r } = rest;
+  return Dogs.updateAsync({ _id }, {$set: {...r, 'embed.thing': embed.thing, 'embed.updatedAt': embed.updatedAt }})
+}
+
+async function upsertDog(_id, modifier) {
+  this.userId = userId; // mock userId
+  return Dogs.upsertAsync({ _id }, modifier);
+}
+
 const resetDogs = async () => Dogs.removeAsync({});
 
-Meteor.methods({ insertDog, updateDog, resetDogs, insertUser, removeUsers });
+Meteor.methods({ insertDog, updateDog, replaceDog, upsertDog, resetDogs, insertUser, removeUsers });
 
 const Cars = new Mongo.Collection('cars');
 const carsSchema = {
@@ -1359,18 +1509,22 @@ const insertCar = async (doc, options) => Cars.insertAsync(doc, options);
 
 Meteor.methods({ insertCar });
 
+
 Tinytest.addAsync('defaults - insert - basic', async (test) => {
    try {
     await Meteor.callAsync('removeUsers')
     await Meteor.callAsync('insertUser');
     await Meteor.callAsync('resetDogs');
 
-    const originalInvocation = DDP._CurrentInvocation.get;
-    DDP._CurrentInvocation.get = function() {
-      return { userId };
-    };
+    let sub;
 
-    const _id = await Dogs.insertAsync();
+    if (Meteor.isClient) {
+      Tracker.autorun(c => {
+        sub = Meteor.subscribe('dogs')
+      })
+    }
+
+    const _id = await Meteor.callAsync('insertDog');
     const doc = await Dogs.findOneAsync({ _id });
 
     test.equal(doc.breed, 'Westie');
@@ -1385,11 +1539,12 @@ Tinytest.addAsync('defaults - insert - basic', async (test) => {
       test.isTrue(!isNaN(new Date(doc.embed.updatedAt)))
     }
 
-    DDP._CurrentInvocation.get = originalInvocation;
+    sub?.stop();
   } catch(error) {
     test.isTrue(error = undefined);
   }
 });
+
 
 Tinytest.addAsync('defaults - insert - with value', async (test) => {
    try {
@@ -1397,12 +1552,15 @@ Tinytest.addAsync('defaults - insert - with value', async (test) => {
     await Meteor.callAsync('insertUser')
     await Meteor.callAsync('resetDogs');
 
-    const originalInvocation = DDP._CurrentInvocation.get;
-    DDP._CurrentInvocation.get = function() {
-      return { userId };
-    };
+    let sub;
 
-    const _id = await Dogs.insertAsync({ breed: 'Norwich' });
+    if (Meteor.isClient) {
+      Tracker.autorun(c => {
+        sub = Meteor.subscribe('dogs')
+      })
+    }
+
+    const _id = await Meteor.callAsync('insertDog', { breed: 'Norwich' });
     const doc = await Dogs.findOneAsync({ _id });
 
     test.equal(doc.breed, 'Norwich');
@@ -1417,7 +1575,7 @@ Tinytest.addAsync('defaults - insert - with value', async (test) => {
       test.isTrue(!isNaN(new Date(doc.embed.updatedAt)))
     }
 
-    DDP._CurrentInvocation.get = originalInvocation;
+    sub?.stop();
   } catch(error) {
     test.isTrue(error = undefined);
   }
@@ -1429,13 +1587,16 @@ Tinytest.addAsync('defaults - update - basic', async (test) => {
     await Meteor.callAsync('insertUser')
     await Meteor.callAsync('resetDogs');
 
-    const originalInvocation = DDP._CurrentInvocation.get;
-    DDP._CurrentInvocation.get = function() {
-      return { userId };
-    };
+    let sub;
 
-    const _id = await Dogs.insertAsync();
-    await Dogs.updateAsync({ _id }, {$set: { breed: 'Lab' }});
+    if (Meteor.isClient) {
+      Tracker.autorun(c => {
+        sub = Meteor.subscribe('dogs')
+      })
+    }
+
+    const _id = await Meteor.callAsync('insertDog');
+    await Meteor.callAsync('updateDog', { _id, breed: 'Lab' })
     const doc = await Dogs.findOneAsync({ _id });
 
     test.equal(doc.breed, 'Lab');
@@ -1451,7 +1612,7 @@ Tinytest.addAsync('defaults - update - basic', async (test) => {
       test.isTrue(!isNaN(new Date(doc.embed.updatedAt)))
     }
 
-    DDP._CurrentInvocation.get = originalInvocation;
+    sub?.stop();
   } catch(error) {
     test.isTrue(error = undefined);
   }
@@ -1463,13 +1624,16 @@ Tinytest.addAsync('defaults - update - with another operator', async (test) => {
     await Meteor.callAsync('insertUser')
     await Meteor.callAsync('resetDogs');
 
-    const originalInvocation = DDP._CurrentInvocation.get;
-    DDP._CurrentInvocation.get = function() {
-      return { userId };
-    };
+    let sub;
 
-    const _id = await Dogs.insertAsync();
-    await Dogs.updateAsync({ _id }, {$set: { breed: 'Lab' }, $inc: {num: 1}});
+    if (Meteor.isClient) {
+      Tracker.autorun(c => {
+        sub = Meteor.subscribe('dogs')
+      })
+    }
+
+    const _id = await Meteor.callAsync('insertDog');
+    await Meteor.callAsync('updateDog', { _id, breed: 'Lab' }, true);
     const doc = await Dogs.findOneAsync({ _id });
 
     test.equal(doc.breed, 'Lab');
@@ -1486,7 +1650,7 @@ Tinytest.addAsync('defaults - update - with another operator', async (test) => {
       test.isTrue(!isNaN(new Date(doc.embed.updatedAt)))
     }
 
-    DDP._CurrentInvocation.get = originalInvocation;
+    sub?.stop();
   } catch(error) {
     test.isTrue(error = undefined);
   }
@@ -1498,13 +1662,16 @@ Tinytest.addAsync('defaults - update - without set', async (test) => {
     await Meteor.callAsync('insertUser')
     await Meteor.callAsync('resetDogs');
 
-    const originalInvocation = DDP._CurrentInvocation.get;
-    DDP._CurrentInvocation.get = function() {
-      return { userId };
-    };
+    let sub;
 
-    const _id = await Dogs.insertAsync();
-    await Dogs.updateAsync({ _id }, {$inc: {num: 1}});
+    if (Meteor.isClient) {
+      Tracker.autorun(c => {
+        sub = Meteor.subscribe('dogs')
+      })
+    }
+
+    const _id = await Meteor.callAsync('insertDog');
+    await Meteor.callAsync('updateDog', { _id }, true);
     const doc = await Dogs.findOneAsync({ _id });
 
     test.equal(doc.breed, 'Westie');
@@ -1521,7 +1688,7 @@ Tinytest.addAsync('defaults - update - without set', async (test) => {
       test.isTrue(!isNaN(new Date(doc.embed.updatedAt)))
     }
 
-    DDP._CurrentInvocation.get = originalInvocation;
+    sub?.stop();
   } catch(error) {
     test.isTrue(error = undefined);
   }
@@ -1533,14 +1700,16 @@ Tinytest.addAsync('defaults - replace - basic', async (test) => {
     await Meteor.callAsync('insertUser')
     await Meteor.callAsync('resetDogs');
 
-    const originalInvocation = DDP._CurrentInvocation.get;
-    DDP._CurrentInvocation.get = function() {
-      return { userId };
-    };
+    let sub;
 
-    const _id = await Dogs.insertAsync();
+    if (Meteor.isClient) {
+      Tracker.autorun(c => {
+        sub = Meteor.subscribe('dogs')
+      })
+    }
 
-    await Dogs.updateAsync({ _id }, { breed: 'Norwich', num: 20, creatorId: userId, username: 'bob', createdAt: new Date(), embed: {thing: 'hi', updatedAt: new Date()} });
+    const _id = await Meteor.callAsync('insertDog');
+    await Meteor.callAsync('replaceDog', { _id, breed: 'Norwich', num: 20, creatorId: userId, username: 'bob', createdAt: new Date(), embed: {thing: 'hi', updatedAt: new Date()} });
     const doc = await Dogs.findOneAsync({ _id });
 
     test.equal(doc.breed, 'Norwich');
@@ -1557,7 +1726,7 @@ Tinytest.addAsync('defaults - replace - basic', async (test) => {
       test.isTrue(!isNaN(new Date(doc.embed.updatedAt)));
     }
 
-    DDP._CurrentInvocation.get = originalInvocation;
+    sub?.stop();
   } catch(error) {
     test.isTrue(error = undefined);
   }
@@ -1569,13 +1738,16 @@ Tinytest.addAsync('defaults - upsert - basic', async (test) => {
     await Meteor.callAsync('insertUser')
     await Meteor.callAsync('resetDogs');
 
-    const originalInvocation = DDP._CurrentInvocation.get;
-    DDP._CurrentInvocation.get = function() {
-      return { userId };
-    };
+    let sub;
 
-    const _id = await Dogs.insertAsync();
-    await Dogs.upsertAsync({ _id }, {$set: { breed: 'Lab' }});
+    if (Meteor.isClient) {
+      Tracker.autorun(c => {
+        sub = Meteor.subscribe('dogs')
+      })
+    }
+
+    const _id = await Meteor.callAsync('insertDog');
+    await Meteor.callAsync('upsertDog', _id, { $set: {breed: 'Lab'}});
     const doc = await Dogs.findOneAsync({ _id });
 
     test.equal(doc.breed, 'Lab');
@@ -1591,12 +1763,11 @@ Tinytest.addAsync('defaults - upsert - basic', async (test) => {
       test.isTrue(!isNaN(new Date(doc.embed.updatedAt)))
     }
 
-    DDP._CurrentInvocation.get = originalInvocation;
+    sub?.stop();
   } catch(error) {
     test.isTrue(error = undefined);
   }
 });
-
 
 Tinytest.addAsync('defaults - upsert - setOnInsert', async (test) => {
    try {
@@ -1604,13 +1775,16 @@ Tinytest.addAsync('defaults - upsert - setOnInsert', async (test) => {
     await Meteor.callAsync('insertUser')
     await Meteor.callAsync('resetDogs');
 
-    const originalInvocation = DDP._CurrentInvocation.get;
-    DDP._CurrentInvocation.get = function() {
-      return { userId };
-    };
+    let sub;
+
+    if (Meteor.isClient) {
+      Tracker.autorun(c => {
+        sub = Meteor.subscribe('dogs')
+      })
+    }
 
     const _id = Random.id();
-    await Dogs.upsertAsync({ _id }, {$setOnInsert: { breed: 'Lab' }});
+    await Meteor.callAsync('upsertDog', _id, {$setOnInsert: { breed: 'Lab' }});
     const doc = await Dogs.findOneAsync({ _id });
 
     test.equal(doc.breed, 'Lab');
@@ -1626,11 +1800,12 @@ Tinytest.addAsync('defaults - upsert - setOnInsert', async (test) => {
       test.isTrue(!isNaN(new Date(doc.embed.updatedAt)))
     }
 
-    DDP._CurrentInvocation.get = originalInvocation;
+    sub?.stop();
   } catch(error) {
     test.isTrue(error = undefined);
   }
 });
+
 
 Tinytest.addAsync('defaults - upsert - setOnInsert and set', async (test) => {
    try {
@@ -1638,13 +1813,16 @@ Tinytest.addAsync('defaults - upsert - setOnInsert and set', async (test) => {
     await Meteor.callAsync('insertUser')
     await Meteor.callAsync('resetDogs');
 
-    const originalInvocation = DDP._CurrentInvocation.get;
-    DDP._CurrentInvocation.get = function() {
-      return { userId };
-    };
+    let sub;
+
+    if (Meteor.isClient) {
+      Tracker.autorun(c => {
+        sub = Meteor.subscribe('dogs')
+      })
+    }
 
     const _id = Random.id();
-    await Dogs.upsertAsync({ _id }, {$setOnInsert: { breed: 'Lab' }, $set: { num: 5 }});
+    await Meteor.callAsync('upsertDog', _id, {$setOnInsert: { breed: 'Lab' }, $set: { num: 5 }});
     const doc = await Dogs.findOneAsync({ _id });
 
     test.equal(doc.breed, 'Lab');
@@ -1661,7 +1839,7 @@ Tinytest.addAsync('defaults - upsert - setOnInsert and set', async (test) => {
       test.isTrue(!isNaN(new Date(doc.embed.updatedAt)))
     }
 
-    DDP._CurrentInvocation.get = originalInvocation;
+    sub?.stop()
   } catch(error) {
     test.isTrue(error = undefined);
   }
@@ -1673,13 +1851,16 @@ Tinytest.addAsync('defaults - upsert - setOnInsert, set, and another operator', 
     await Meteor.callAsync('insertUser')
     await Meteor.callAsync('resetDogs');
 
-    const originalInvocation = DDP._CurrentInvocation.get;
-    DDP._CurrentInvocation.get = function() {
-      return { userId };
-    };
+    let sub;
+
+    if (Meteor.isClient) {
+      Tracker.autorun(c => {
+        sub = Meteor.subscribe('dogs')
+      })
+    }
 
     const _id = Random.id();
-    await Dogs.upsertAsync({ _id }, {$setOnInsert: { breed: 'Lab' }, $set: { greeting: 'sup' }, $inc: { anotherNum: 1 }});
+    await Meteor.callAsync('upsertDog', _id, {$setOnInsert: { breed: 'Lab' }, $set: { greeting: 'sup' }, $inc: { anotherNum: 1 }});
     const doc = await Dogs.findOneAsync({ _id });
 
     test.equal(doc.breed, 'Lab');
@@ -1697,7 +1878,7 @@ Tinytest.addAsync('defaults - upsert - setOnInsert, set, and another operator', 
       test.isTrue(!isNaN(new Date(doc.embed.updatedAt)))
     }
 
-    DDP._CurrentInvocation.get = originalInvocation;
+    sub?.stop();
   } catch(error) {
     test.isTrue(error = undefined);
   }
@@ -1711,7 +1892,6 @@ Tinytest.addAsync('insert - ID validates successfully', async (test) => {
     test.isTrue(error = undefined);
   }
 });
-
 
 if (Meteor.isServer) {
   Tinytest.addAsync('autoCheck: false', async (test) => {
@@ -2088,8 +2268,9 @@ if (Meteor.isServer) {
 
     // validNumber and validString are instances of Match.Where which is a function. can't compare functions directly for equality so taking those out and then comparing them as their strings to for equality
     // maybe there is a better way to test function equality
-    const { people, minMaxString, minString, maxString, maxStringCustomError, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, $rules, ...rest} = shapedSchema;
-    const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, maxStringCustomError: mxSCE, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, $rules: r, ...restManual} = testSchemaShapedManual;
+    const { people, minMaxString, minString, maxString, maxStringCustomError, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, ...rest} = shapedSchema;
+    const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, maxStringCustomError: mxSCE, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, ...restManual} = testSchemaShapedManual;
+    const rules = shapedSchema[_rules];
 
     const { state, ...restAddr } = address;
     const { state: sM, ...restAddrM } = addr;
@@ -2118,8 +2299,8 @@ if (Meteor.isServer) {
     test.equal(arrayOfRegexStringsWithArrayMinMax.condition.toString(), aRSWAMM.condition.toString());
     test.equal(simpleWhere.condition.toString(), sW.condition.toString());
     test.equal(dependWhere, dW);
-    test.equal(JSON.stringify($rules), `[{"path":["dependWhere"],"deps":["text"]}]`)
-    test.equal($rules[0].rule.toString().includes(`if (text === 'stuff' && !dependWhere) throw 'nope'`), true)
+    test.equal(JSON.stringify(rules), `[{"path":["dependWhere"],"deps":["text"]}]`)
+    test.equal(rules[0].rule.toString().includes(`if (text === 'stuff' && !dependWhere) throw 'nope'`), true)
   });
 
   Tinytest.add('returns a shaped schema when needs it when sugared', function(test) {
@@ -2127,8 +2308,9 @@ if (Meteor.isServer) {
 
     // validNumber and validString are instances of Match.Where which is a function. can't compare functions directly for equality so taking those out and then comparing them as their strings to for equality
     // maybe there is a better way to test function equality
-    const { people, minMaxString, minString, maxString, maxStringCustomError, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, $rules, ...rest} = shapedSchema;
-    const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, maxStringCustomError: mxSCE, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, $rules: r, ...restManual} = testSchemaShapedManual;
+    const { people, minMaxString, minString, maxString, maxStringCustomError, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, ...rest} = shapedSchema;
+    const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, maxStringCustomError: mxSCE, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, ...restManual} = testSchemaShapedManual;
+    const rules = shapedSchema[_rules];
 
     const { state, ...restAddr } = address;
     const { state: sM, ...restAddrM } = addr;
@@ -2157,15 +2339,16 @@ if (Meteor.isServer) {
     test.equal(arrayOfRegexStringsWithArrayMinMax.condition.toString(), aRSWAMM.condition.toString());
     test.equal(simpleWhere.condition.toString(), sW.condition.toString());
     test.equal(dependWhere, dW);
-    test.equal(JSON.stringify($rules), `[{"path":["dependWhere"],"deps":["text"]}]`)
-    test.equal($rules[0].rule.toString().includes(`if (text === 'stuff' && !dependWhere) throw 'nope'`), true)
+    test.equal(JSON.stringify(rules), `[{"path":["dependWhere"],"deps":["text"]}]`)
+    test.equal(rules[0].rule.toString().includes(`if (text === 'stuff' && !dependWhere) throw 'nope'`), true)
   });
 
   Tinytest.add('deep optional schema', function(test) {
     const shapedSchema = shape(testSchema, { optionalize: true });
 
-    const { people, minMaxString, minString, maxString, maxStringCustomError, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, $rules, ...rest} = shapedSchema;
-    const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, maxStringCustomError: mxSCE, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, $rules: r, ...restManual} = testSchemaShapedOptionalManual;
+    const { people, minMaxString, minString, maxString, maxStringCustomError, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, ...rest} = shapedSchema;
+    const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, maxStringCustomError: mxSCE, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, ...restManual} = testSchemaShapedOptionalManual;
+    const rules = shapedSchema[_rules];
 
     const { state, ...restAddr } = address.pattern;
     const { state: sM, ...restAddrM } = addr.pattern;
@@ -2194,7 +2377,7 @@ if (Meteor.isServer) {
     test.equal(arrayOfRegexStringsWithArrayMinMax.pattern.condition.toString(), aRSWAMM.pattern.condition.toString());
     test.equal(simpleWhere.pattern.condition.toString(), sW.pattern.condition.toString());
     test.equal(dependWhere.pattern, dW.pattern);
-    test.equal($rules, undefined)
+    test.equal(rules, undefined)
   });
 
   Tinytest.add('handles embedded subschema', function(test) {
@@ -2747,6 +2930,139 @@ if (Meteor.isServer) {
 
     try {
       check(allowIntData, allowIntSchemaHas)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  ///////
+  Tinytest.add('condition - min double', function(test) {
+    try {
+      check(minDoubleDataFail, minDoubleSchema)
+    } catch(error) {
+      test.isTrue(error)
+    }
+
+    try {
+      check(minDoubleData, minDoubleSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - max double', function(test) {
+    try {
+      check(maxDoubleDataFail, maxDoubleSchema)
+    } catch(error) {
+      test.isTrue(error)
+    }
+
+    try {
+      check(maxDoubleData, maxDoubleSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - minMax double', function(test) {
+    try {
+      check(minMaxDoubleDataFailLow, minMaxDoubleSchema)
+    } catch(error) {
+      test.isTrue(error)
+    }
+
+    try {
+      check(minMaxDoubleDataFailHigh, minMaxDoubleSchema)
+    } catch(error) {
+      test.isTrue(error)
+    }
+
+    try {
+      check(minMaxDoubleData, minMaxDoubleSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - allow double', function(test) {
+    try {
+      check(allowDoubleDataFail, allowDoubleSchema)
+    } catch(error) {
+      test.isTrue(error)
+    }
+
+    try {
+      check(allowDoubleData, allowDoubleSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - fluent - min double', function(test) {
+    try {
+      check(minDoubleDataFail, minDoubleSchemaHas)
+    } catch(error) {
+      test.isTrue(error)
+    }
+
+    try {
+      check(minDoubleData, minDoubleSchemaHas)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - fluent - max double', function(test) {
+    try {
+      check(maxDoubleDataFail, maxDoubleSchemaHas)
+    } catch(error) {
+      test.isTrue(error)
+    }
+
+    try {
+      check(maxDoubleData, maxDoubleSchemaHas)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - fluent - minMax double', function(test) {
+    try {
+      check(minMaxDoubleDataFailLow, minMaxDoubleSchemaHas)
+    } catch(error) {
+      test.isTrue(error)
+    }
+
+    try {
+      check(minMaxDoubleDataFailHigh, minMaxDoubleSchemaHas)
+    } catch(error) {
+      test.isTrue(error)
+    }
+
+    try {
+      check(minMaxDoubleData, minMaxDoubleSchemaHas)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('condition - fluent - allow double', function(test) {
+    try {
+      check(allowDoubleDataFail, allowDoubleSchemaHas)
+    } catch(error) {
+      test.isTrue(error)
+    }
+
+    try {
+      check(allowDoubleData, allowDoubleSchemaHas)
       test.isTrue(true);
     } catch(error) {
       test.isTrue(error = undefined)
@@ -3496,6 +3812,69 @@ if (Meteor.isServer) {
     }
   });
 
+  Tinytest.add('condition - extra props in objects', function(test) {
+    try {
+      // TODO: why does this pass on the first run but not subsequent?
+      const result = check(extraDataFail, extraSchema)
+    } catch(error) {
+      test.isTrue(error)
+      test.equal(error.details[0].message,`Nice must be at most 2 properties`)
+    }
+
+    try {
+      const result = check(extraData, extraSchema)
+      test.isTrue(true);
+    } catch(error) {
+      test.isTrue(error = undefined)
+    }
+  });
+
+  Tinytest.add('JSONSchema - extra props in objects', function(test) {
+    // TODO: why does this pass on the first run but not subsequent?
+    const jsonSchema = createJSONSchema(extraSchema)
+    // console.dir(jsonSchema, {depth: null})
+    test.equal(jsonSchema, {
+      bsonType: 'object',
+      properties: {
+        _id: { bsonType: 'string' },
+        text: { bsonType: 'string' },
+        something: {
+          bsonType: 'object',
+          properties: {
+            stuff: { bsonType: 'string' },
+            embed: {
+              bsonType: 'object',
+              properties: { more: { bsonType: 'string' } },
+              required: [ 'more' ],
+              additionalProperties: true
+            },
+            nice: {
+              bsonType: 'object',
+              properties: { b: { bsonType: 'string' } },
+              required: [ 'b' ],
+              additionalProperties: true,
+              maxProperties: 2
+            }
+          },
+          required: [ 'stuff', 'embed', 'nice' ],
+          additionalProperties: true
+        },
+        things: {
+          bsonType: 'array',
+          items: {
+            bsonType: 'object',
+            properties: { yo: { bsonType: 'string' } },
+            required: [ 'yo' ],
+            additionalProperties: true
+          }
+        }
+      },
+      required: [ 'text', 'something', 'things' ],
+      additionalProperties: true
+    })
+  });
+
+
   Tinytest.add('condition - simple where', function(test) {
     try {
       const result = check(whereDataFail, whereSchema)
@@ -3656,10 +4035,10 @@ if (Meteor.isServer) {
 
   });
 
-  Tinytest.add('converts an easy schema to a JSONSchema', function(test) {
+  Tinytest.add('JSONSchema - converts an easy schema', function(test) {
     const jsonSchema = createJSONSchema(testSchema);
-    //console.log('jsonSchema');
-    //console.dir(jsonSchema, {depth: null});
+    // console.log('jsonSchema');
+    // console.dir(jsonSchema, {depth: null});
     test.equal(jsonSchema, {
       'bsonType': 'object',
       'properties': {
@@ -3669,6 +4048,7 @@ if (Meteor.isServer) {
         'createdAt': { 'bsonType': 'date' },
         'bool': { 'bsonType': 'bool' },
         'num': { 'bsonType': 'double' },
+        'double': { anyOf: [ { bsonType: 'double' }, { bsonType: 'int' } ] },
         'stuff': { 'bsonType': 'object' },
         'int': { 'bsonType': 'int' },
         'minMaxString': { 'bsonType': 'string', 'minLength': 0, 'maxLength': 20 },
@@ -3698,10 +4078,11 @@ if (Meteor.isServer) {
            'properties': {
             'name': { 'bsonType': 'string' },
             'age': { 'bsonType': 'double' },
-            'arrayOfOptionalBooleans': { 'bsonType': 'array', 'items': { 'bsonType': 'bool' }, 'minItems': 0 }
+            'arrayOfOptionalBooleans': { 'bsonType': 'array', 'items': { 'bsonType': 'bool' }, 'minItems': 0 },
            },
            'required': [ 'name', 'age', 'arrayOfOptionalBooleans' ],
-           'additionalProperties': true
+           'additionalProperties': false,
+           'minProperties': 3
          }
        },
       'optionalArray': { 'bsonType': 'array', 'items': { 'bsonType': 'string' } },
@@ -3730,7 +4111,8 @@ if (Meteor.isServer) {
       'required': [
        'text',        'emails',
        'createdAt',   'bool',
-       'num',         'stuff',
+       'num',
+       'double',      'stuff',
        'int',         'minMaxString',
        'minString',   'maxString',
        'maxStringCustomError',
@@ -3749,7 +4131,7 @@ if (Meteor.isServer) {
     });
   });
 
-Tinytest.add('converts an easy schema sugared to a JSONSchema', function(test) {
+Tinytest.add('JSONSchema - converts an easy schema sugared', function(test) {
     const jsonSchema = createJSONSchema(testSchemaSugar);
     //console.log('SUGAR jsonSchema');
     //console.dir(jsonSchema, {depth: null});
@@ -3762,6 +4144,7 @@ Tinytest.add('converts an easy schema sugared to a JSONSchema', function(test) {
         'createdAt': { 'bsonType': 'date' },
         'bool': { 'bsonType': 'bool' },
         'num': { 'bsonType': 'double' },
+        'double': { anyOf: [ { bsonType: 'double' }, { bsonType: 'int' } ] },
         'stuff': { 'bsonType': 'object' },
         'int': { 'bsonType': 'int' },
         'minMaxString': { 'bsonType': 'string', 'minLength': 0, 'maxLength': 20 },
@@ -3794,7 +4177,8 @@ Tinytest.add('converts an easy schema sugared to a JSONSchema', function(test) {
             'arrayOfOptionalBooleans': { 'bsonType': 'array', 'items': { 'bsonType': 'bool' }, 'minItems': 0 }
            },
            'required': [ 'name', 'age', 'arrayOfOptionalBooleans' ],
-           'additionalProperties': true
+           'additionalProperties': false,
+           'minProperties': 3
          }
        },
       'optionalArray': { 'bsonType': 'array', 'items': { 'bsonType': 'string' } },
@@ -3823,7 +4207,8 @@ Tinytest.add('converts an easy schema sugared to a JSONSchema', function(test) {
       'required': [
        'text',        'emails',
        'createdAt',   'bool',
-       'num',         'stuff',
+       'num',
+       'double',      'stuff',
        'int',         'minMaxString',
        'minString',   'maxString',
        'maxStringCustomError',
@@ -3847,7 +4232,7 @@ Tinytest.add('converts an easy schema sugared to a JSONSchema', function(test) {
     test.equal(shapedSchema, messageSchema);
   });
 
-  Tinytest.add('correctly converts easy schema to JSONSchema with type property without allowed condition keywords', function(test) {
+  Tinytest.add('JSONSchema - correctly converts easy schema with type property without allowed condition keywords', function(test) {
     const jsonSchema = createJSONSchema(messageSchema);
     test.equal(jsonSchema, {
       'bsonType': 'object',
@@ -3912,6 +4297,44 @@ Tinytest.add('converts an easy schema sugared to a JSONSchema', function(test) {
         'readBy',       'authorId'
       ],
       'additionalProperties': false
+    });
+  });
+
+  Tinytest.add('JSONSchema - correctly converts easy schema with doubles', function(test) {
+    const jsonSchema = createJSONSchema(doubleSchema);
+    test.equal(jsonSchema, {
+      bsonType: 'object',
+      properties: {
+        _id: { bsonType: 'string' },
+        num: { anyOf: [ { bsonType: 'double' }, { bsonType: 'int' } ] },
+        nums: {
+          bsonType: 'array',
+          items: { anyOf: [ { bsonType: 'double' }, { bsonType: 'int' } ] }
+        },
+        things: {
+          bsonType: 'array',
+          items: {
+            bsonType: 'object',
+            properties: {
+              a: { bsonType: 'string' },
+              b: { anyOf: [ { bsonType: 'double' }, { bsonType: 'int' } ] }
+            },
+            required: [ 'a', 'b' ],
+            additionalProperties: false
+          }
+        },
+        stuff: {
+          bsonType: 'object',
+          properties: {
+            c: { bsonType: 'string' },
+            d: { anyOf: [ { bsonType: 'double' }, { bsonType: 'int' } ] }
+          },
+          required: [ 'c', 'd' ],
+          additionalProperties: false
+        }
+      },
+      required: [ '_id', 'num', 'nums', 'things', 'stuff' ],
+      additionalProperties: false
     });
   });
 

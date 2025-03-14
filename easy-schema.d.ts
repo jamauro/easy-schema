@@ -1,4 +1,38 @@
+import { Match } from 'meteor/check';
+
 export declare const has: unique symbol;
+
+type HasFluentSchema<T> = {
+  [has]: BaseSchema<T>
+};
+
+// Object pattern limited to
+export type ObjectPattern<T> = {
+  type: HasFluentSchema<T>
+}
+
+export type Pattern =
+  | BaseSchema<any>
+  | HasFluentSchema<any>
+  | ObjectPattern<any>
+  | [Pattern]
+  // Meteor Check doesn't require Pattern[], because check schemas are ephemeral
+  // so typescript gives e.g. [String] the strict type of [StringConstructor]
+  // but a schema declared as a variable does not have this benefit of the doubt
+  // and is inferred as StringConstructor[]
+  // Object.freeze or `as const` makes TS complain about mutability... can't win.
+  | Pattern[]
+  | {[key: string]: Pattern}
+  | Match.Pattern;
+
+export type Infer<T extends Pattern> =
+  T extends BaseSchema<infer U> ? U :
+  T extends HasFluentSchema<infer U> ? U :
+  T extends [Pattern] ? Infer<T[0]>[] :
+  T extends Pattern[] ? Infer<T[0]>[] :
+  T extends ObjectPattern<infer U> ? U & { [key: string]: any } :
+  T extends {[key: string]: Pattern} ? {[K in keyof T]: Infer<T[K]>} :
+  Match.PatternMatch<T>;
 
 // Base Schema class for common behavior
 declare class BaseSchema<T> {
@@ -31,7 +65,6 @@ declare class ArraySchema extends BaseSchema<any[]> {
 declare class ObjectSchema extends BaseSchema<object> {
   min(value: number, message?: string): this;
   max(value: number, message?: string): this;
-  extra(value?: boolean): this;
   only(value?: any): this;
 }
 
@@ -67,6 +100,10 @@ interface IntegerConstructor {
   [has]: NumberSchema;
 }
 
+interface DoubleConstructor {
+  [has]: NumberSchema;
+}
+
 interface IDConstructor {
   [has]: BaseSchema<string>;
 }
@@ -87,16 +124,17 @@ export declare const ObjectID: ObjectIDConstructor;
  * @param data The data to check
  * @param schema The schema to match `data` against
  */
-export declare function check<T extends Match.Pattern>(
+export declare function check<T extends Pattern>(
   data: any,
   schema: T
-): asserts data is Match.PatternMatch<T>;
+): asserts data is Infer<T>;
 
 
 /** Matches any value. */
 export declare const Any: Match.Matcher<any>;
 /** Matches a signed 32-bit integer. Doesn’t match `Infinity`, `-Infinity`, or `NaN`. */
 export declare const Integer: Match.Matcher<number>;
+export declare const Double: Match.Matcher<number>;
 
 /**
   * Matches either `undefined`, `null`, or pattern. If used in an object, matches only if the key is not set as opposed to the value being set to `undefined` or `null`. This set of conditions
@@ -104,18 +142,21 @@ export declare const Integer: Match.Matcher<number>;
   */
 export declare function Optional<T extends Pattern>(
   pattern: T
-): Matcher<PatternMatch<T> | undefined | null>;
+): Match.Matcher<Infer<T> | undefined | null>;
 
 /**
- * Shapes an object based on a POJO.
+ * Shapes a schema object based on a POJO.
  *
- * @param {Object} obj - The object to be shaped.
+ * @param {Object} schema - The schema object to be shaped.
  * @param {Object} [options] - Options object.
  * @param {boolean} [options.optionalize=false] - If true, marks all properties as optional.
- * @returns {Object} The shaped object that's ready to use with jam:easy-schema `check`.
+ * @returns {Object} The shaped schema object that's ready to use with jam:easy-schema `check`.
  */
-export declare const shape: (obj: Record<string, any>, options?: { optionalize?: boolean }) => Record<string, any>;
-
+//export declare const shape: (obj: Record<string, any>, options?: { optionalize?: boolean }) => Record<string, any>;
+export declare const shape: <T extends Pattern>(
+  schema: T,
+  options?: { optionalize?: boolean }
+) => options extends { optionalize: true } ? Partial<Infer<T>> : Infer<T>;
 /**
  * Creates a new object composed of the specified keys and their corresponding values from the given object.
  *
@@ -123,7 +164,11 @@ export declare const shape: (obj: Record<string, any>, options?: { optionalize?:
  * @param {string[]} keys - An array of keys to pick from the source object.
  * @returns {Object} - A new object containing only the specified keys and their values.
  */
-export declare const pick: (obj: Record<string, any>, keys: string[]) => Record<string, any>;
+// export declare const pick: (obj: Record<string, any>, keys: string[]) => Record<string, any>;
+export declare const pick: <T extends Pattern, K extends keyof Infer<T>>(
+  obj: T,
+  keys: K[]
+) => Pick<Infer<T>, K>;
 
 export declare const EasySchema: {
   /**
@@ -155,10 +200,10 @@ export declare const EasySchema: {
 };
 
 declare module 'meteor/mongo' {
-  module Mongo {
+  namespace Mongo {
     interface Collection<T> {
-      attachSchema(schema: object): void;
-      schema?: Match.Pattern;
+      attachSchema<U extends Pattern>(schema: U): Collection<Infer<U>>
+      schema?: Pattern;
     }
   }
 }

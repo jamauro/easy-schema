@@ -1,3 +1,10 @@
+## 1.6.0
+* feat: allow top-level schema and embedded objects to accept additional properties with `...Any`
+* feat: improved type inference for code completion and typescript use. huge thanks to [@ceigey](https://github.com/ceigey) for his work on this!
+* feat: `Double` type
+* breaking: replace `.extra()` with `...Any` to indicate an object can accept additional properties
+* fix: under the hood improvements and optimizations
+
 ## 1.5.1
 * fix: improve attaching Mongo JSON Schema when a collection doesn't exist yet in the db
 
