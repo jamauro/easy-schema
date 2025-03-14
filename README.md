@@ -426,7 +426,7 @@ const personSchema = {
 
 ### Working with Numbers
 
-#### When using Mongo JSON Schemas
+#### Double - when using Mongo JSON Schemas
 
 Currently, numbers like `1` and `1.0` are both considered to be type `Integer` by the Node Mongo driver. Numbers like `1.2` are considered a double as you might expect.
 
@@ -447,7 +447,7 @@ const schema = {
 
 Depending on your situation, you might be better off using `Integer` or storing the numbers as `String` and convert them to Numbers when you need to perform some simple math. If you use `Number` and you have a situation where some data of yours sums to, for example `34.000000`, the Node Mongo driver will see that as an integer `34` and will complain that it was expecting `bsonType: 'double'`.
 
-#### When number precision is needed
+#### Decimal - when number precision is needed
 
 If you need precision for your numbers, and want to avoid weird floating point math where `0.1 + 0.2 = 0.30000000000000004` then you should probably store them as `Decimal`. Here's what Mongo has to say about [modeling monetary data](https://www.mongodb.com/docs/manual/tutorial/model-monetary-data/#std-label-numeric-model-use-case).
 
