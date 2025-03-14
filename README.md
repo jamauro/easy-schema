@@ -7,7 +7,7 @@ Easy Schema is an easy way to add schema validation for Meteor apps. Its key fea
 * Automatic creation and attachment of a MongoDB JSON Schema (optional)
 * A schema syntax that is a joy to write and read — brevity and clarity
 * Lightweight and fast
-* Native to the Meteor ecosystem – extends Meteor's [check](https://docs.meteor.com/api/check.html)for validation, uses [Validation Error](https://github.com/meteor/validation-error) for friendlier error messages, and supports Meteor's `mongo-decimal`
+* Native to the Meteor ecosystem – extends Meteor's [check](https://docs.meteor.com/api/check.html) for validation, uses [Validation Error](https://github.com/meteor/validation-error) for friendlier error messages, and supports Meteor's `mongo-decimal`
 * Integrates seamlessly with [jam:method](https://github.com/jamauro/method) (optional)
 
 ## Basics
