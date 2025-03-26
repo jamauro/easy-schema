@@ -1,3 +1,8 @@
+## 1.6.1
+* fix: bug when using `check` manually against a collection.schema
+* fix: under the hood improvements and optimizations
+* fix: improve doc definition for `check`
+
 ## 1.6.0
 * feat: allow top-level schema and embedded objects to accept additional properties with `...Any`
 * feat: improved type inference for code completion and typescript use. huge thanks to [@ceigey](https://github.com/ceigey) for his work on this!

@@ -120,13 +120,20 @@ export declare const ID: IDConstructor;
 export declare const ObjectID: ObjectIDConstructor;
 
 /**
- * Check that data matches a schema.
- * @param data The data to check
- * @param schema The schema to match `data` against
+ * @summary Check that data matches a schema pattern.
+ * If the data does not match the schema, a `ValidationError` is thrown.
+ *
+ * @param {any} data The data to check
+ * @param {Pattern} schema The schema to match `data` against
+ * @param {Object} [options] Additional options for validation
+ * @param {boolean} [options.full] Perform a full validation (on the server only)
+ *
+ * @throws {ValidationError} If the data does not conform to the schema
  */
 export declare function check<T extends Pattern>(
   data: any,
-  schema: T
+  schema: T,
+  options?: { full?: boolean }
 ): asserts data is Infer<T>;
 
 

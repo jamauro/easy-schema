@@ -2,7 +2,7 @@ import { Tinytest } from 'meteor/tinytest';
 import { Mongo } from 'meteor/mongo';
 import { Decimal } from 'meteor/mongo-decimal';
 import { has, Integer, Double, Any, ID, ObjectID, Optional, AnyOf, check, EasySchema } from 'meteor/jam:easy-schema';
-import { shape, Where, _getParams, _rules } from './lib/shape.js';
+import { shape, meta, Where, _getParams } from './lib/shape.js';
 import { isEqual } from './lib/utils/shared';
 import { check as c, Match } from 'meteor/check';
 import { Random } from 'meteor/random';
@@ -151,9 +151,12 @@ const testSchemaShapedManual = {
   simpleWhere: Where({type: String, where: value => value === 'simple'}),
   dependWhere: String,
 };
-testSchemaShapedManual[_rules] =[{path: ['dependWhere'], deps: ['text'], rule: ({text, dependWhere}) => {
-  if (text === 'stuff' && !dependWhere) throw 'nope'
-}}]
+Object.defineProperty(testSchemaShapedManual, meta, {value:
+  { rules:  [{path: ['dependWhere'], deps: ['text'], rule: ({text, dependWhere}) => {
+      if (text === 'stuff' && !dependWhere) throw 'nope'
+    }}]
+  }
+});
 
 const testSchemaShapedOptionalManual = {
   _id: Optional(String),
@@ -201,9 +204,12 @@ const testSchemaShapedOptionalManual = {
   simpleWhere: Optional(Where({type: String, where: value => value === 'simple'})),
   dependWhere: Optional(String),
 };
-testSchemaShapedOptionalManual[_rules] = [{path: ['dependWhere'], deps: ['text'], rule: ({text, dependWhere}) => {
-  if (text === 'stuff' && !dependWhere) throw 'nope'
-}}]
+Object.defineProperty(testSchemaShapedOptionalManual, meta, {value:
+  { rules:  [{path: ['dependWhere'], deps: ['text'], rule: ({text, dependWhere}) => {
+      if (text === 'stuff' && !dependWhere) throw 'nope'
+    }}]
+  }
+});
 
 const schemaAsIs = {
   _id: Optional(String),
@@ -1509,6 +1515,150 @@ const insertCar = async (doc, options) => Cars.insertAsync(doc, options);
 
 Meteor.methods({ insertCar });
 
+const sampleSchema = {
+  name: String,
+  age: Integer,
+  email: Optional(String),
+  address: {
+    street: String,
+    city: String,
+    zip: Optional(Number),
+  },
+  tags: Optional([String]),
+};
+
+Tinytest.addAsync('check - manual against collection schema', async (test) => {
+  try {
+    const schema = Things.schema;
+
+    check({num: 1}, schema)
+
+    test.isTrue(true)
+  } catch (error) {
+    test.equal(error, undefined);
+  }
+});
+
+Tinytest.addAsync('check - manual against collection schema with modifier', async (test) => {
+  try {
+    const schema = Things.schema;
+
+    check({$set: {num: 1}}, schema);
+
+    test.isTrue(true)
+  } catch (error) {
+    test.equal(error, undefined);
+  }
+});
+
+Tinytest.addAsync('check - manual full: true', async (test) => {
+  try {
+    check(thingData, Things.schema, { full: true })
+    test.isTrue(true)
+  } catch (error) {
+    test.equal(error, undefined);
+  }
+});
+
+Tinytest.addAsync('check - manual full: true, fails as expected', async (test) => {
+  try {
+    const { num, ...data } = thingData;
+    check(data, Things.schema, { full: true })
+    test.isTrue(Meteor.isClient) // should fail on the server
+  } catch (error) {
+    test.isTrue(error);
+  }
+});
+
+Tinytest.addAsync('check - valid', async (test) => {
+  try {
+    check({ name: 'John', age: 30, email: 'john@example.com', address: { street: 'Main St', city: 'NY' } }, sampleSchema);
+    test.ok(true, 'Valid data should pass without errors');
+  } catch (e) {
+    test.fail('Valid data should not throw an error');
+  }
+});
+
+Tinytest.addAsync('check - missing required field', async (test) => {
+  try {
+    check({ age: 30 }, sampleSchema);
+    test.fail('Missing required field should throw an error');
+  } catch (e) {
+    test.ok(true, 'Error thrown as expected');
+  }
+});
+
+Tinytest.addAsync('check - invalid type', async (test) => {
+  try {
+    check({ name: 'John', age: 'thirty' }, sampleSchema);
+    test.fail('Invalid type should throw an error');
+  } catch (e) {
+    test.ok(true, 'Error thrown as expected');
+  }
+});
+
+Tinytest.addAsync('check - optional field', async (test) => {
+  try {
+    check({ name: 'John', age: 30, address: { street: 'Main St', city: 'NY' } }, sampleSchema);
+    test.ok(true, 'Optional field missing should not cause an error');
+  } catch (e) {
+    test.fail('Optional field missing should not throw an error');
+  }
+});
+
+Tinytest.addAsync('check - extra fields ignored', async (test) => {
+  try {
+    const schema = {...sampleSchema, ...Any};
+    check({ name: 'John', age: 30, email: 'john@example.com', extra: 'extra', address: { street: 'Main St', city: 'NY' } }, schema);
+    test.ok(true, 'Extra fields should not cause an error');
+  } catch (e) {
+    test.fail('Extra fields should be ignored if not explicitly checked');
+  }
+});
+
+Tinytest.addAsync('check - deeply nested object', async (test) => {
+  try {
+    check({ name: 'John', age: 30, address: { street: 123, city: 'NY' } }, sampleSchema);
+    test.fail('Invalid nested field type should throw an error');
+  } catch (e) {
+    test.ok(true, 'Error thrown for invalid nested field type');
+  }
+});
+
+Tinytest.addAsync('check - array', async (test) => {
+  try {
+    check({ name: 'John', age: 30, address: { street: 'Main St', city: 'NY' }, tags: ['tag1', 'tag2'] }, sampleSchema);
+    test.ok(true, 'Valid array should pass');
+  } catch (e) {
+    test.fail('Valid array should not throw an error');
+  }
+
+  try {
+    check({ name: 'John', age: 30, address: { street: 'Main St', city: 'NY' }, tags: ['tag1', 123] }, sampleSchema);
+    test.fail('Invalid array element type should throw an error');
+  } catch (e) {
+    test.ok(true, 'Error thrown for invalid array element type');
+  }
+});
+
+Tinytest.addAsync('check - full: true with missing _id', async (test) => {
+  try {
+    check({ name: 'John', age: 30, address: { street: 'Main St', city: 'NY' } }, sampleSchema, { full: true });
+    test.ok(true, '_id should be optional in full mode');
+  } catch (e) {
+    test.fail('_id should not be required in full mode');
+  }
+});
+
+Tinytest.addAsync('check - completely invalid data', async (test) => {
+  try {
+    check(null, sampleSchema);
+    test.fail('Null should throw an error');
+  } catch (e) {
+    test.ok(true, 'Error thrown for null data');
+  }
+});
+
 
 Tinytest.addAsync('defaults - insert - basic', async (test) => {
    try {
@@ -2270,7 +2420,7 @@ if (Meteor.isServer) {
     // maybe there is a better way to test function equality
     const { people, minMaxString, minString, maxString, maxStringCustomError, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, ...rest} = shapedSchema;
     const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, maxStringCustomError: mxSCE, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, ...restManual} = testSchemaShapedManual;
-    const rules = shapedSchema[_rules];
+    const { rules } = shapedSchema[meta];
 
     const { state, ...restAddr } = address;
     const { state: sM, ...restAddrM } = addr;
@@ -2310,7 +2460,7 @@ if (Meteor.isServer) {
     // maybe there is a better way to test function equality
     const { people, minMaxString, minString, maxString, maxStringCustomError, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, ...rest} = shapedSchema;
     const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, maxStringCustomError: mxSCE, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, ...restManual} = testSchemaShapedManual;
-    const rules = shapedSchema[_rules];
+    const { rules } = shapedSchema[meta];
 
     const { state, ...restAddr } = address;
     const { state: sM, ...restAddrM } = addr;
@@ -2348,7 +2498,7 @@ if (Meteor.isServer) {
 
     const { people, minMaxString, minString, maxString, maxStringCustomError, minMaxNum, minNum, maxNum, minMaxInt, minInt, maxInt, address, regexString, optionalRegexString, optionalRegexStringVariant, arrayOfRegexStrings, arrayOfOptionalMinMaxNum, optionalArrayOfMinMaxInt, minMaxArray, arrayOfRegexStringsWithArrayMinMax, simpleWhere, dependWhere, ...rest} = shapedSchema;
     const { people: p, minMaxString: mMS, minString: mnS, maxString: mxS, maxStringCustomError: mxSCE, minMaxNum: mmN, minNum: mnN, maxNum: mxN, minMaxInt: mmI, minInt: mnI, maxInt: mxI, address: addr, regexString: rS, optionalRegexString: oRS, optionalRegexStringVariant: oRSV, arrayOfRegexStrings: aRS, arrayOfOptionalMinMaxNum: aOMMN, optionalArrayOfMinMaxInt: oAMMI, minMaxArray: mmA, arrayOfRegexStringsWithArrayMinMax: aRSWAMM, simpleWhere: sW, dependWhere: dW, ...restManual} = testSchemaShapedOptionalManual;
-    const rules = shapedSchema[_rules];
+    const { rules } = shapedSchema[meta];
 
     const { state, ...restAddr } = address.pattern;
     const { state: sM, ...restAddrM } = addr.pattern;
@@ -3995,19 +4145,33 @@ if (Meteor.isServer) {
   });
 
   Tinytest.add('condition - nested where', function (test) {
+    const dataFail = {
+      _id: '1',
+      name: 'hi',
+      homeAddress: {street: 'thing', city: 'no', state: {full: 'Texas', code: 'tx'}},
+      billingAddress: {street: 'thing', city: 'no', state: {full: 'fail', code: 'tx'}}, // should fail here
+      stuff: 'sup',
+      another: [{name: 'bob', age: 21, foo: 'f'}, {name: 'jim', age: 39, foo: 'g'}]
+    }
+
     try {
-      check({
-        billingAddress: {street: 'thing', city: 'no', state: {full: 'fail', code: 'tx'}},
-      }, nestedSchema)
+      check(dataFail, nestedSchema);
     } catch(error) {
       test.isTrue(error)
       test.equal(error.details[0].message,`Nope`)
     }
 
+    const dataSuccess = {
+      _id: '1',
+      name: 'hi',
+      homeAddress: {street: 'thing', city: 'no', state: {full: 'Texas', code: 'tx'}},
+      billingAddress: {street: 'thing', city: 'no', state: {full: 'Texas', code: 'tx'}},
+      stuff: 'sup',
+      another: [{name: 'bob', age: 21, foo: 'f'}, {name: 'jim', age: 39, foo: 'g'}]
+    }
+
     try {
-      check({
-        billingAddress: {street: 'thing', city: 'no', state: {full: 'Texas', code: 'tx'}},
-      }, nestedSchema)
+      check(dataSuccess, nestedSchema)
       test.isTrue(true);
     } catch(error) {
       test.isTrue(error = undefined)
@@ -4015,24 +4179,37 @@ if (Meteor.isServer) {
   });
 
   Tinytest.add('condition - nested array where', function (test) {
+    const dataFail = {
+      _id: '1',
+      name: 'hi',
+      homeAddress: {street: 'thing', city: 'no', state: {full: 'Texas', code: 'tx'}},
+      billingAddress: {street: 'thing', city: 'no', state: {full: 'Texas', code: 'tx'}},
+      stuff: 'sup',
+      another: [{name: 'bob', age: 21, foo: 'f'}, {name: 'jim', age: 41, foo: 'g'}] // should fail here
+    }
+
     try {
-      check({
-        another: [{name: 'bob', age: 21, foo: 'f'}, {name: 'jim', age: 41, foo: 'g'}],
-      }, nestedSchema)
+      check(dataFail, nestedSchema)
     } catch(error) {
       test.isTrue(error)
       test.equal(error.details[0].message,`old`)
     }
 
+    const dataSuccess = {
+      _id: '1',
+      name: 'hi',
+      homeAddress: {street: 'thing', city: 'no', state: {full: 'Texas', code: 'tx'}},
+      billingAddress: {street: 'thing', city: 'no', state: {full: 'Texas', code: 'tx'}},
+      stuff: 'sup',
+      another: [{name: 'bob', age: 21, foo: 'f'}, {name: 'jim', age: 39, foo: 'g'}]
+    }
+
     try {
-      check({
-        another: [{name: 'bob', age: 21, foo: 'f'}, {name: 'jim', age: 39, foo: 'g'}],
-      }, nestedSchema)
+      check(dataSuccess, nestedSchema)
       test.isTrue(true);
     } catch(error) {
       test.isTrue(error = undefined)
     }
-
   });
 
   Tinytest.add('JSONSchema - converts an easy schema', function(test) {
