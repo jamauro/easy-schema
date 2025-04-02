@@ -1527,6 +1527,50 @@ const sampleSchema = {
   tags: Optional([String]),
 };
 
+const certificateSchema = {
+  _id: Optional(String),
+  x509Fields: {
+    commonName: String,
+  }
+}
+
+const certificateCollection = new Mongo.Collection('certificates');
+certificateCollection.attachSchema(certificateSchema);
+
+const insertCertificate = async () => {
+  return await certificateCollection.insertAsync({
+    x509Fields: {
+      commonName: 'with-insert'
+    }
+  });
+}
+
+const updateCertificate = async () => {
+  return await certificateCollection.updateAsync({
+    _id: Random.id(),
+  }, {
+    $set: {
+      x509Fields: {
+        commonName: 'with-update'
+      }
+    }
+  })
+}
+
+const upsertCertificate = async () => {
+  return await certificateCollection.upsertAsync({
+    _id: Random.id(),
+  }, {
+    $set: {
+      x509Fields: {
+        commonName: 'with-upsert'
+      }
+    }
+  })
+}
+
+Meteor.methods({ insertCertificate, updateCertificate, upsertCertificate });
+
 Tinytest.addAsync('check - manual against collection schema', async (test) => {
   try {
     const schema = Things.schema;
@@ -2043,6 +2087,16 @@ Tinytest.addAsync('insert - ID validates successfully', async (test) => {
   }
 });
 
+Tinytest.addAsync('insert - field with numbers', async (test) => {
+  try {
+    await Meteor.callAsync("insertCertificate");
+    test.isTrue(true);
+  } catch (e) {
+    console.log(e);
+    test.isTrue(e = undefined);
+  }
+});
+
 if (Meteor.isServer) {
   Tinytest.addAsync('autoCheck: false', async (test) => {
      try {
@@ -2220,6 +2274,16 @@ if (Meteor.isServer) {
     }
   });
 
+  Tinytest.addAsync('update - field with numbers', async (test) => {
+    try {
+      await Meteor.callAsync('updateCertificate');
+      test.isTrue(true);
+    } catch (e) {
+      console.log(e);
+      test.isTrue(e = undefined);
+    }
+  });
+
   Tinytest.addAsync('upsert - {upsert: true} validates successfully against server', async (test) => {
      try {
       await Things.updateAsync({num: 1.4},
@@ -2297,6 +2361,16 @@ if (Meteor.isServer) {
       test.isTrue(true)
     } catch(error) {
       test.isTrue(error = undefined);
+    }
+  });
+
+  Tinytest.addAsync('upsert - field with numbers', async (test) => {
+    try {
+      await Meteor.callAsync('upsertCertificate');
+      test.isTrue(true);
+    } catch (e) {
+      console.log(e);
+      test.isTrue(e = undefined);
     }
   });
 

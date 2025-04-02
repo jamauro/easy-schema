@@ -1,3 +1,6 @@
+## 1.6.2
+* fix: field names containing numbers were incorrectly failing validation during `update` and `upsert`
+
 ## 1.6.1
 * fix: bug when using `check` manually against a collection.schema
 * fix: under the hood improvements and optimizations
