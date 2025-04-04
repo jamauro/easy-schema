@@ -1,3 +1,6 @@
+## 1.6.3
+* fix: using default values while making an update with the same field name was creating a path conflict
+
 ## 1.6.2
 * fix: field names containing numbers were incorrectly failing validation during `update` and `upsert`
 

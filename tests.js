@@ -1531,6 +1531,8 @@ const certificateSchema = {
   _id: Optional(String),
   x509Fields: {
     commonName: String,
+    _versionSetOnInsert: String[has].default("1.0.0"),
+    _versionSetOnUpdate: String[has].default(() => "1.0.0"),
   }
 }
 
@@ -1557,6 +1559,13 @@ const updateCertificate = async () => {
   })
 }
 
+const updateCertificateDotNotation = async () => {
+  return await certificateCollection.updateAsync(
+    { _id: Random.id() },
+    { $set: { "x509Fields.commonName": "something-new" }
+  });
+}
+
 const upsertCertificate = async () => {
   return await certificateCollection.upsertAsync({
     _id: Random.id(),
@@ -1569,7 +1578,7 @@ const upsertCertificate = async () => {
   })
 }
 
-Meteor.methods({ insertCertificate, updateCertificate, upsertCertificate });
+Meteor.methods({ insertCertificate, updateCertificate, updateCertificateDotNotation, upsertCertificate });
 
 Tinytest.addAsync('check - manual against collection schema', async (test) => {
   try {
@@ -2092,7 +2101,6 @@ Tinytest.addAsync('insert - field with numbers', async (test) => {
     await Meteor.callAsync("insertCertificate");
     test.isTrue(true);
   } catch (e) {
-    console.log(e);
     test.isTrue(e = undefined);
   }
 });
@@ -2279,7 +2287,14 @@ if (Meteor.isServer) {
       await Meteor.callAsync('updateCertificate');
       test.isTrue(true);
     } catch (e) {
-      console.log(e);
+      test.isTrue(e = undefined);
+    }
+  });
+  Tinytest.addAsync('update - field with numbers and dot notation', async (test) => {
+    try {
+      await Meteor.callAsync('updateCertificateDotNotation');
+      test.isTrue(true);
+    } catch (e) {
       test.isTrue(e = undefined);
     }
   });
@@ -2369,7 +2384,6 @@ if (Meteor.isServer) {
       await Meteor.callAsync('upsertCertificate');
       test.isTrue(true);
     } catch (e) {
-      console.log(e);
       test.isTrue(e = undefined);
     }
   });
