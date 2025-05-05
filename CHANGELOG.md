@@ -1,3 +1,6 @@
+## 1.7.0
+* feat: pass in `schema` as option when creating collection `new Mongo.Collection(..., { schema })` for automatic type inference. `attachSchema` remains for backwards compatibility.
+
 ## 1.6.3
 * fix: using default values while making an update with the same field name was creating a path conflict
 

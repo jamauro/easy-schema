@@ -11,6 +11,12 @@ import { Tracker } from 'meteor/tracker';
 
 const { createJSONSchema } = Meteor.isServer ? require('./lib/attach/server') : {};
 
+const aSchema = {
+  name: String,
+};
+
+const Avocados = new Mongo.Collection('avocados', { schema: aSchema });
+
 const testSchema = {
   _id: Optional(String),
   text: String,
@@ -1579,6 +1585,11 @@ const upsertCertificate = async () => {
 }
 
 Meteor.methods({ insertCertificate, updateCertificate, updateCertificateDotNotation, upsertCertificate });
+
+Tinytest.add('Mongo.Collection - schema is attached when passed in as an option', (test) => {
+  test.isNotNull(Avocados.schema);
+  test.isNotNull(Avocados.schema.name, 'Schema should define the "name" field');
+});
 
 Tinytest.addAsync('check - manual against collection schema', async (test) => {
   try {
@@ -3802,7 +3813,7 @@ if (Meteor.isServer) {
       test.isTrue(error = undefined)
     }
   });
-  // 
+  //
   Tinytest.add('condition - min object', function(test) {
     try {
       check(minObjDataFail, minObjSchema)
@@ -4742,4 +4753,3 @@ Tinytest.addAsync('config - base', async (test) => {
   test.equal(Fruits.schema.thing, String)
   test.equal(Fruits.schema.aDate, Date)
 });
-

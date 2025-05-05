@@ -25,8 +25,6 @@ Right before an `insert / update / upsert` to the database, the data will be aut
 ```js
 import { Mongo } from 'meteor/mongo';
 
-export const Todos = new Mongo.Collection('todos');
-
 const schema = {
   _id: String,
   text: String,
@@ -36,8 +34,10 @@ const schema = {
   username: String
 };
 
-Todos.attachSchema(schema); // attachSchema is a function that's built into this package
+export const Todos = new Mongo.Collection('todos', { schema });
 ```
+
+`Note:` previously you needed to do `Todos.attachSchema(schema)`. You can still do that but by passing in the schema directly you get automatic type inference. see [Typed Collections](#typed-collections)
 
 ### Use the schema with [jam:method](https://github.com/jamauro/method) (optional)
 ```js
@@ -481,17 +481,25 @@ check(data, schema);
 data.// hovering here will show the expected types based on the schema
 ```
 
-#### Typed Collections (optional)
-When using typescript, you can take it a step further by adding an inferred type to your Collection.
+#### Typed Collections
+By passing in your schema like this, your collection will be typed automatically, no config needed:
 
 ```ts
-import { schema } from './schema';
+export const Todos = new Mongo.Collection('todos', { schema });
+```
+
+This would also work:
+
+```ts
+const collection = new Mongo.Collection('todos');
+export const Todos = collection.attachSchema(schema);
+```
+
+If needed, `Infer` is available:
+```ts
 import { type Infer } from 'meteor/jam:easy-schema';
 
 type Todo = Infer<typeof schema>
-export const Todos = new Mongo.Collection<Todo>('todos', ...)
-Todos.attachSchema(schema);
-// Todos is now a typed collection
 ```
 
 ### Examples

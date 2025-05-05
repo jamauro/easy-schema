@@ -1,4 +1,5 @@
 import { Match } from 'meteor/check';
+import { NpmModuleMongodb } from 'meteor/npm-mongo';
 
 export declare const has: unique symbol;
 
@@ -208,9 +209,54 @@ export declare const EasySchema: {
 
 declare module 'meteor/mongo' {
   namespace Mongo {
+    /**
+      * Retrieve a previously defined Mongo.Collection instance by its name. The collection must already have been defined with `new Mongo.Collection(name, ...)`.
+      * Plain MongoDB collections are not available by this method.
+      * @param name The name of the collection instance.
+      */
+    export function getCollection<
+        TCollection extends Collection<any, any> | undefined = Collection<NpmModuleMongodb.Document> | undefined
+    >(name: string): TCollection;
+
     interface Collection<T> {
-      attachSchema<U extends Pattern>(schema: U): Collection<Infer<U>>
-      schema?: Pattern;
+      attachSchema<U extends Pattern>(schema: U): Collection<Infer<U>>;
+      schema: T;
+    }
+
+    var Collection: CollectionStatic;
+    interface CollectionStatic {
+      new <S extends Pattern>(name: string, options: {
+        /**
+          * The server connection that will manage this collection. Uses the default connection if not specified. Pass the return value of calling `DDP.connect` to specify a different
+          * server. Pass `null` to specify no connection. Unmanaged (`name` is null) collections cannot specify a connection.
+          */
+        connection?: DDP.DDPStatic | null;
+        /** The method of generating the `_id` fields of new documents in this collection.  Possible values:
+          * - **`'STRING'`**: random strings
+          * - **`'MONGO'`**:  random [`Mongo.ObjectID`](#mongo_object_id) values
+          *
+          * The default id generation technique is `'STRING'`.
+          */
+        idGeneration?: string;
+        /**
+          * An optional transformation function. Documents will be passed through this function before being returned from `fetch` or `findOne`, and before being passed to callbacks of
+          * `observe`, `map`, `forEach`, `allow`, and `deny`. Transforms are *not* applied for the callbacks of `observeChanges` or to cursors returned from publish functions.
+          */
+        transform?: (doc: Infer<S>) => Infer<S>;
+        /** Set to `false` to skip setting up the mutation methods that enable insert/update/remove from client code. Default `true`. */
+        defineMutationMethods?: boolean;
+        /** The EasySchema for this collection */
+        schema?: S;
+      }): Collection<Infer<S>>;
+
+      /**
+        * Retrieve a previously defined Mongo.Collection instance by its name. The collection must already have been defined with `new Mongo.Collection(name, ...)`.
+        * Plain MongoDB collections are not available by this method.
+        * @param name The name of the collection instance.
+        */
+      getCollection<
+        TCollection extends Collection<any, any> | undefined = Collection<NpmModuleMongodb.Document> | undefined
+      >(name: string): TCollection;
     }
   }
 }
