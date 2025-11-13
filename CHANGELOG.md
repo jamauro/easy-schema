@@ -1,3 +1,6 @@
+## 1.7.1
+* fix: `updateAsync` when using schema `default`s and the `$set` is not using dot notation
+
 ## 1.7.0
 * feat: pass in `schema` as option when creating collection `new Mongo.Collection(..., { schema })` for automatic type inference. `attachSchema` remains for backwards compatibility.
 

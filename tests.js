@@ -1535,8 +1535,10 @@ const sampleSchema = {
 
 const certificateSchema = {
   _id: Optional(String),
+  tags: [String],
   x509Fields: {
     commonName: String,
+    something: Optional(String),
     _versionSetOnInsert: String[has].default("1.0.0"),
     _versionSetOnUpdate: String[has].default(() => "1.0.0"),
   }
@@ -1545,46 +1547,56 @@ const certificateSchema = {
 const certificateCollection = new Mongo.Collection('certificates');
 certificateCollection.attachSchema(certificateSchema);
 
+const certId = Random.id();
 const insertCertificate = async () => {
+  await certificateCollection.removeAsync({ _id: certId });
+
   return await certificateCollection.insertAsync({
+    _id: certId,
+    tags: ['tag1', 'tag2'],
     x509Fields: {
-      commonName: 'with-insert'
+      something: 'hey',
+      commonName: 'with-insert',
     }
   });
 }
 
 const updateCertificate = async () => {
-  return await certificateCollection.updateAsync({
-    _id: Random.id(),
-  }, {
+  return await certificateCollection.updateAsync(certId, {
     $set: {
-      x509Fields: {
-        commonName: 'with-update'
-      }
+      tags: ['tag1'],
+      'x509Fields.commonName': 'with-update'
     }
   })
 }
 
 const updateCertificateDotNotation = async () => {
   return await certificateCollection.updateAsync(
-    { _id: Random.id() },
-    { $set: { "x509Fields.commonName": "something-new" }
+    { _id: certId },
+    { $set: { 'x509Fields.commonName': 'something-new' }
+  });
+}
+
+const updateCertificateRemoveField = async () => {
+  return await certificateCollection.updateAsync(
+    { _id: certId },
+    { $set: {
+      x509Fields: {
+        commonName: 'another-update',
+        _versionSetOnInsert: '1.0.0'
+      }
+    }
   });
 }
 
 const upsertCertificate = async () => {
-  return await certificateCollection.upsertAsync({
-    _id: Random.id(),
-  }, {
-    $set: {
-      x509Fields: {
-        commonName: 'with-upsert'
-      }
-    }
+  return await certificateCollection.upsertAsync(
+    { _id: certId },
+    { $set: { 'x509Fields.commonName': 'with-upsert' }
   })
 }
 
-Meteor.methods({ insertCertificate, updateCertificate, updateCertificateDotNotation, upsertCertificate });
+Meteor.methods({ insertCertificate, updateCertificate, updateCertificateDotNotation, updateCertificateRemoveField, upsertCertificate });
 
 Tinytest.add('Mongo.Collection - schema is attached when passed in as an option', (test) => {
   test.isNotNull(Avocados.schema);
@@ -2109,7 +2121,7 @@ Tinytest.addAsync('insert - ID validates successfully', async (test) => {
 
 Tinytest.addAsync('insert - field with numbers', async (test) => {
   try {
-    await Meteor.callAsync("insertCertificate");
+    await Meteor.callAsync('insertCertificate');
     test.isTrue(true);
   } catch (e) {
     test.isTrue(e = undefined);
@@ -2301,9 +2313,19 @@ if (Meteor.isServer) {
       test.isTrue(e = undefined);
     }
   });
+
   Tinytest.addAsync('update - field with numbers and dot notation', async (test) => {
     try {
       await Meteor.callAsync('updateCertificateDotNotation');
+      test.isTrue(true);
+    } catch (e) {
+      test.isTrue(e = undefined);
+    }
+  });
+
+  Tinytest.addAsync('update - field and remove other field', async (test) => {
+    try {
+      await Meteor.callAsync('updateCertificateRemoveField');
       test.isTrue(true);
     } catch (e) {
       test.isTrue(e = undefined);
